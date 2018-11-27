@@ -87,7 +87,7 @@ public class LyricActivity extends Activity {
             @Override
             public void onClick(View v) {
                 long timeMills = Long.parseLong(etTime.getText().toString());
-                lvLyric.updateTime(timeMills, false);
+                lvLyric.setTimeMills(timeMills);
             }
         });
 
@@ -138,7 +138,7 @@ public class LyricActivity extends Activity {
             @Override
             public void run() {
                 long currentTimeMillis = System.currentTimeMillis() - startTimeMills;
-                lvLyric.updateTime(currentTimeMillis + 30000, true);
+                lvLyric.updateTimeMills(currentTimeMillis + 30000);
                 List<LyricLine> lyricLines = lyric.getLyricLines();
                 if (currentTimeMillis < lyricLines.get(lyricLines.size() - 1).getStartTime()) {
                     lvLyric.postDelayed(updateLyric, DELAY_MILLIS);

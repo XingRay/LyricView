@@ -36,9 +36,9 @@ public class LyricView extends View {
 
     // default values
 
-    public static final float TEXT_SIZE = 40.0f;
-    public static final float TEXT_SIZE_HIGHLIGHT = 80.0f;
-    public static final float LINE_SPACING = 20.0f;
+    public static final float TEXT_SIZE = 20.0f;
+    public static final float TEXT_SIZE_HIGHLIGHT = 40.0f;
+    public static final float LINE_SPACING = 10.0f;
 
     public static final int COLOR_TEXT = 0xff000000;
     public static final int COLOR_HIGHLIGHT = 0xffff0000;
@@ -48,6 +48,7 @@ public class LyricView extends View {
     public static final int TIME_INTERVAL_SCROLL = 20;
     public static final int TIME_INTERVAL_FLING = 20;
     public static final int SCROLL_TIME = 300;
+    public static final int STAY_MILLIS = 2000;
 
 
     // attributes
@@ -68,15 +69,20 @@ public class LyricView extends View {
     private int mWidth;
     private int mHeight;
     private float mTouchStartY;
-    private float mScrollToOffsetY;
-    private float mScrollFromOffsetY;
+    private float mScrollOffsetYTo;
+    private float mScrollOffsetYFrom;
+
+    /**
+     * 第0行到控件顶部的距离
+     */
     private float mCurrentOffsetY;
     private float mTextHeight;
     private Paint mTextPaint;
     private Paint mHighlightTextPaint;
     private Paint mKaraokePaint;
-    private Paint mZoomInPaint;
     private Paint mZoomOutPaint;
+    private Paint mZoomInPaint;
+    private Paint mKaraokeZoomInPaint;
     private Paint.FontMetrics mTextFontMetrics;
     private Bitmap mKaraokeBitmap;
     private Canvas mKaraokeCanvas;
@@ -84,17 +90,32 @@ public class LyricView extends View {
     private RectF mDst = new RectF();
     private State mState = State.IDLE;
     private VelocityTracker mVelocityTracker;
+    /**
+     * pixel / mills
+     */
     private float mFlingVelocity;
-    private float mFlingAccelerate = -10;
+
+    /**
+     * pixel / mills^2
+     */
+    private float mFlingAccelerate = 0.01f;
+
     private int mLastLineIndex = -1;
     private int mCurrentLineIndex = -1;
     private float mScrollVelocity = 0.15f;
+    private Paint.FontMetrics mHighlightFontMetrics;
+    private float mHighlightTextHeight;
+    private long mUpdateTimeMills;
+    private long mFlingTimeMills;
+    private float mFlingMinOffsetY;
+    private float mFlingMaxOffsetY;
 
     // listeners
 
     private TouchListener mTouchListener;
-    private Paint.FontMetrics mHighlightFontMetrics;
-    private float mHighlightTextHeight;
+    private float mTouchMinOffsetY;
+    private float mTouchMaxOffsetY;
+
 
     public LyricView(Context context) {
         this(context, null);
@@ -127,8 +148,12 @@ public class LyricView extends View {
         mKaraokePaint.setAntiAlias(true);
         mSrc.bottom = (int) Math.ceil(mHighlightTextHeight);
 
-        mZoomInPaint = new Paint();
         mZoomOutPaint = new Paint();
+        mZoomInPaint = new Paint();
+        mKaraokeZoomInPaint = new Paint();
+
+        mKaraokeZoomInPaint.setColor(mKaraokeColor);
+        mZoomInPaint.setColor(mHighlightColor);
 
 //        LinearGradient highlightShader = new LinearGradient(0, 0, 0, mTextHeight,
 //                new int[]{0xffffeaba, 0xffffffff},
@@ -149,8 +174,20 @@ public class LyricView extends View {
         if (mLines.isEmpty()) {
             return;
         }
+
+        reset();
         initKaraokeVariables();
         invalidate();
+    }
+
+    private void reset() {
+        updateState(State.IDLE);
+
+        mFlingMinOffsetY = mHeight / 2 - computeOffsetYByIndex(mLines.size() - 1, 0);
+        mFlingMaxOffsetY = mHeight / 2;
+
+        mTouchMinOffsetY = mHeight / 2 - computeOffsetYByIndex(mLines.size() + 3, 0);
+        mTouchMaxOffsetY = mHeight / 2 + computeOffsetYByIndex(3, 0);
     }
 
     public void setTextSize(float textSize) {
@@ -193,6 +230,7 @@ public class LyricView extends View {
         }
         mHighlightColor = color;
         mHighlightTextPaint.setColor(mHighlightColor);
+        mZoomInPaint.setColor(mHighlightColor);
 
         invalidate();
     }
@@ -203,6 +241,7 @@ public class LyricView extends View {
         }
         mKaraokeColor = color;
         mKaraokePaint.setColor(mKaraokeColor);
+        mKaraokeZoomInPaint.setColor(mKaraokeColor);
         invalidate();
     }
 
@@ -222,34 +261,62 @@ public class LyricView extends View {
         invalidate();
     }
 
-    public void updateTime(long mills, boolean smooth) {
+    public void updateTimeMills(final long mills) {
         mCurrentTimeMills = mills;
-        int index = mCurrentLineIndex;
-        mCurrentLineIndex = getLineIndexByTimeMills(mCurrentTimeMills);
+        int index = getLineIndexByTimeMills(mills);
         if (index != mCurrentLineIndex) {
-            mLastLineIndex = index;
+            mLastLineIndex = mCurrentLineIndex;
+            mCurrentLineIndex = index;
         }
+        // 第0行到控件顶部的距离
         float offsetY = mHeight / 2 - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
 
-        if (smooth) {
-            if (mState == State.SCROLLING) {
+        switch (mState) {
+            case IDLE:
+                if (mCurrentOffsetY == offsetY) {
+                    invalidate();
+                    break;
+                }
+
+                mScrollOffsetYFrom = mCurrentOffsetY;
+                mScrollOffsetYTo = offsetY;
+                mScrollVelocity = Math.abs(mScrollOffsetYTo - mScrollOffsetYFrom) / SCROLL_TIME;
+                updateState(State.SCROLLING_WITH_SCALE);
+                performScroll();
+                break;
+
+            case SCROLLING_WITH_SCALE:
+                mUpdateTimeMills = mills;
                 return;
-            }
-            mScrollFromOffsetY = mCurrentOffsetY;
-            mScrollToOffsetY = offsetY;
-            mScrollVelocity = Math.abs(mScrollToOffsetY - mScrollFromOffsetY) / SCROLL_TIME;
-            performScroll();
-        } else {
-            mCurrentOffsetY = offsetY;
-            Log.i(TAG, "updateTime"
-                    + "\nmCurrentOffsetY:" + mCurrentOffsetY
-                    + "\noffsetY:" + offsetY
-                    + "");
-            invalidate();
+
+            case STOP:
+            case TOUCHING:
+            case FLINGING:
+            case SCROLLING:
+                invalidate();
+                mUpdateTimeMills = mills;
+                break;
+
+            default:
+                break;
         }
     }
 
-    public void scrollToLine(int index, boolean smooth) {
+    public void setTimeMills(long mills) {
+        mCurrentTimeMills = mills;
+        int index = getLineIndexByTimeMills(mCurrentTimeMills);
+        if (index != mCurrentLineIndex) {
+            mLastLineIndex = mCurrentLineIndex;
+            mCurrentLineIndex = index;
+        }
+        mCurrentOffsetY = mHeight / 2 - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
+        Log.i(TAG, "updateTimeMills"
+                + "\nmCurrentOffsetY:" + mCurrentOffsetY
+                + "");
+        invalidate();
+    }
+
+    private void scrollToLine(int index, boolean smooth) {
         Line line = mLines.get(index);
         mCurrentTimeMills = line.startMills;
         float offsetY = mHeight / 2 - computeOffsetYByIndex(index, index);
@@ -257,7 +324,7 @@ public class LyricView extends View {
             return;
         }
         if (smooth) {
-            mScrollToOffsetY = offsetY;
+            mScrollOffsetYTo = offsetY;
             performScroll();
         } else {
             mCurrentOffsetY = offsetY;
@@ -279,10 +346,6 @@ public class LyricView extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
-        Log.i(TAG, "onDraw "
-                + "\nmLastLineIndex:" + mLastLineIndex
-                + "\nmCurrentLineIndex:" + mCurrentLineIndex);
-
         for (int i = 0, size = mLines.size(); i < size; i++) {
             boolean isHighlight = i == mCurrentLineIndex;
             float textHeight = isHighlight ? mHighlightTextHeight : mTextHeight;
@@ -302,17 +365,17 @@ public class LyricView extends View {
             long startMills = line.startMills;
             long endMills = line.endMills;
 
-            if (mState == State.SCROLLING) {
+            if (hasScaleAnimation()) {
                 if (i == mLastLineIndex) {
-                    float x = ((int) (mWidth - mZoomInPaint.measureText(content))) >> 1;
-                    canvas.drawText(content, x, baseLine, mZoomInPaint);
-                    continue;
-                } else if (i == mCurrentLineIndex) {
                     float x = ((int) (mWidth - mZoomOutPaint.measureText(content))) >> 1;
                     canvas.drawText(content, x, baseLine, mZoomOutPaint);
+                    continue;
+                } else if (i == mCurrentLineIndex) {
+                    float x = ((int) (mWidth - mZoomInPaint.measureText(content))) >> 1;
+                    canvas.drawText(content, x, baseLine, mZoomInPaint);
 
                     if (misKaraokeEnable) {
-                        drawKaraoke(canvas, mZoomOutPaint, x, baseLine, content, startMills, endMills);
+                        drawKaraoke(canvas, mKaraokeZoomInPaint, x, baseLine, content, startMills, endMills);
                     }
                     continue;
                 }
@@ -337,10 +400,7 @@ public class LyricView extends View {
         int action = event.getAction();
         switch (action) {
             case MotionEvent.ACTION_DOWN:
-                if (mState != State.IDLE && mState != State.FLINGING) {
-                    return false;
-                }
-                mState = State.TOUCHING;
+                updateState(State.TOUCHING);
                 mTouchStartY = event.getY();
                 if (mVelocityTracker == null) {
                     mVelocityTracker = VelocityTracker.obtain();
@@ -355,8 +415,11 @@ public class LyricView extends View {
             case MotionEvent.ACTION_MOVE:
                 mVelocityTracker.addMovement(event);
                 float y = event.getY();
-                mCurrentOffsetY += y - mTouchStartY;
+                float deltaY = y - mTouchStartY;
                 mTouchStartY = y;
+
+                mCurrentOffsetY = limit(mCurrentOffsetY + deltaY, mTouchMinOffsetY, mTouchMaxOffsetY);
+
                 invalidate();
                 if (mTouchListener != null) {
                     long timeMills = getTimeMillsByOffsetY(mCurrentOffsetY);
@@ -365,17 +428,17 @@ public class LyricView extends View {
                 return true;
 
             case MotionEvent.ACTION_UP:
-                mState = State.IDLE;
-                mVelocityTracker.computeCurrentVelocity(1000);
+                mVelocityTracker.computeCurrentVelocity(1);
                 mFlingVelocity = mVelocityTracker.getYVelocity();
-                int minFlingVelocity = ViewConfiguration.get(getContext()).getScaledMinimumFlingVelocity();
+                int minFlingVelocity = ViewConfiguration.get(getContext()).getScaledMinimumFlingVelocity() / 1000;
                 if (Math.abs(mFlingVelocity) > minFlingVelocity) {
-                    mState = State.FLINGING;
+                    updateState(State.FLINGING);
                     performFling();
                 } else {
                     mFlingVelocity = 0;
                     mVelocityTracker.recycle();
                     mVelocityTracker = null;
+                    updateState(State.STOP);
                 }
                 if (mTouchListener != null) {
                     long timeMills = getTimeMillsByOffsetY(mCurrentOffsetY);
@@ -389,6 +452,49 @@ public class LyricView extends View {
             default:
         }
         return super.onTouchEvent(event);
+    }
+
+    private float limit(float value, float min, float max) {
+        if (min > max) {
+            throw new IllegalArgumentException();
+        }
+        return Math.min(Math.max(min, value), max);
+    }
+
+    private void updateState(State state) {
+        mState = state;
+
+        switch (mState) {
+            case IDLE:
+                if (mUpdateTimeMills != 0) {
+                    updateTimeMills(mUpdateTimeMills);
+                    mUpdateTimeMills = 0;
+                }
+                break;
+
+            case STOP:
+                postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (mState != State.STOP) {
+                            return;
+                        }
+                        float offsetY = mHeight / 2 - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
+                        if (mCurrentOffsetY == offsetY) {
+                            updateState(State.IDLE);
+                            return;
+                        }
+                        mScrollOffsetYFrom = mCurrentOffsetY;
+                        mScrollOffsetYTo = offsetY;
+                        mScrollVelocity = Math.abs(mScrollOffsetYTo - mScrollOffsetYFrom) / SCROLL_TIME;
+                        updateState(State.SCROLLING);
+                        performScroll();
+                    }
+                }, STAY_MILLIS);
+                break;
+
+            default:
+        }
     }
 
     @Override
@@ -438,6 +544,18 @@ public class LyricView extends View {
         mHighlightColor = savedState.mHighlightColor;
         mTextColor = savedState.mTextColor;
         mTextSize = savedState.mTextSize;
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        // TODO: 2018/11/27
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        // TODO: 2018/11/27
     }
 
     /**
@@ -500,48 +618,32 @@ public class LyricView extends View {
     }
 
     private void performScroll() {
-        if (mState != State.SCROLLING && mState != State.IDLE) {
+        if (mState != State.SCROLLING_WITH_SCALE && mState != State.SCROLLING && mState != State.IDLE) {
             return;
         }
-        mState = State.SCROLLING;
 
-        float deltaY = mScrollToOffsetY - mCurrentOffsetY;
+        float deltaY = mScrollOffsetYTo - mCurrentOffsetY;
         float distance = mScrollVelocity * TIME_INTERVAL_SCROLL;
 
         if (Math.abs(deltaY) > distance) {
             mCurrentOffsetY += deltaY > 0 ? distance : -distance;
-            Log.i(TAG, "performScroll abs(deltaY)>distance "
-                    + "\nmScrollToOffsetY:" + mScrollToOffsetY
-                    + "\nmCurrentOffsetY:" + mCurrentOffsetY
-                    + "\ndeltaY:" + deltaY
-                    + "\ndistance:" + distance);
         } else {
-            mCurrentOffsetY = mScrollToOffsetY;
-            Log.i(TAG, "performScroll abs(deltaY)<distance "
-                    + "\nmScrollToOffsetY:" + mScrollToOffsetY
-                    + "\nmCurrentOffsetY:" + mCurrentOffsetY
-                    + "\ndeltaY:" + deltaY
-                    + "\ndistance:" + distance);
+            mCurrentOffsetY = mScrollOffsetYTo;
         }
 
-        float ratio = (mCurrentOffsetY - mScrollFromOffsetY) / (mScrollToOffsetY - mScrollFromOffsetY);
-        float zoomInTextSize = (1 - ratio) * mHighlightTextSize + ratio * mTextSize;
-        float zoomOutTextSize = (1 - ratio) * mTextSize + ratio * mHighlightTextSize;
+        if (hasScaleAnimation()) {
+            float ratio = (mCurrentOffsetY - mScrollOffsetYFrom) / (mScrollOffsetYTo - mScrollOffsetYFrom);
+            float zoomOutTextSize = calcInterValue(mHighlightTextSize, mTextSize, ratio);
+            float zoomInTextSize = calcInterValue(mTextSize, mHighlightTextSize, ratio);
 
-        Log.i(TAG, "performScroll"
-                + "\nratio:" + ratio
-                + "\nzoomInTextSize:" + zoomInTextSize
-                + "\nzoomOutTextSize:" + zoomOutTextSize
-                + "\nmCurrentOffsetY:" + mCurrentOffsetY
-                + "\nmScrollFromOffsetY:" + mScrollFromOffsetY
-                + "\nmScrollToOffsetY:" + mScrollToOffsetY);
-
-        mZoomInPaint.setTextSize(zoomInTextSize);
-        mZoomOutPaint.setTextSize(zoomOutTextSize);
+            mZoomOutPaint.setTextSize(zoomOutTextSize);
+            mZoomInPaint.setTextSize(zoomInTextSize);
+            mKaraokeZoomInPaint.setTextSize(zoomInTextSize);
+        }
 
         invalidate();
-        if (mCurrentOffsetY == mScrollToOffsetY) {
-            mState = State.IDLE;
+        if (mCurrentOffsetY == mScrollOffsetYTo) {
+            updateState(State.IDLE);
             return;
         }
         postDelayed(new Runnable() {
@@ -550,6 +652,10 @@ public class LyricView extends View {
                 performScroll();
             }
         }, TIME_INTERVAL_SCROLL);
+    }
+
+    private boolean hasScaleAnimation() {
+        return mState == State.SCROLLING_WITH_SCALE;
     }
 
     private void initKaraokeVariables() {
@@ -582,13 +688,13 @@ public class LyricView extends View {
         return computeOffsetYByIndex(index, index);
     }
 
-    private float computeOffsetYByIndex(int index, int currentIndex) {
+    private float computeOffsetYByIndex(int index, int highlightIndex) {
         float offsetY;
         if (index == 0) {
             offsetY = 0;
-        } else if (index < currentIndex) {
+        } else if (index < highlightIndex) {
             offsetY = (mTextHeight + mLineSpacing) * index;
-        } else if (index == currentIndex) {
+        } else if (index == highlightIndex) {
             offsetY = (mTextHeight + mLineSpacing) * Math.max(0, index - 1)
                     + (mHighlightTextHeight / 2 + mTextHeight / 2 + mLineSpacing);
         } else {
@@ -600,32 +706,53 @@ public class LyricView extends View {
 
     private void performFling() {
         if (mFlingVelocity == 0) {
-            mState = State.IDLE;
+            updateState(State.STOP);
+            Log.i(TAG, "performFling stop");
+            mFlingTimeMills = 0;
             return;
         }
         if (mState != State.FLINGING) {
             return;
         }
-
-        float deltaY = mFlingVelocity * TIME_INTERVAL_FLING / 1000;
-        mCurrentOffsetY += deltaY;
-
-        float deltaV = mFlingAccelerate * TIME_INTERVAL_FLING;
-        if (mFlingVelocity > 0) {
-            deltaV = Math.max(-mFlingVelocity, deltaV);
+        if (mFlingTimeMills == 0) {
+            mFlingTimeMills = System.currentTimeMillis();
         } else {
-            deltaV = Math.min(-mFlingVelocity, -deltaV);
-        }
-        mFlingVelocity += deltaV;
+            long currentTimeMillis = System.currentTimeMillis();
+            long timeMills = currentTimeMillis - mFlingTimeMills;
+            float accelerate = mFlingVelocity > 0 ? -mFlingAccelerate : mFlingAccelerate;
+            float velocity;
+            if (mFlingVelocity > 0) {
+                velocity = Math.max(0, mFlingVelocity + accelerate * timeMills);
+            } else {
+                velocity = Math.min(0, mFlingVelocity + accelerate * timeMills);
+            }
 
-        invalidate();
+            // s = vt+0.5*at^2
+            float distance = (velocity * velocity - mFlingVelocity * mFlingVelocity) / (2 * accelerate);
+
+            mCurrentOffsetY += distance;
+            mCurrentOffsetY = limit(mCurrentOffsetY, mFlingMinOffsetY, mFlingMaxOffsetY);
+
+            if (mCurrentOffsetY == mFlingMaxOffsetY || mCurrentOffsetY == mFlingMinOffsetY) {
+                mFlingVelocity = 0;
+                mFlingTimeMills = 0;
+            } else {
+                mFlingVelocity = velocity;
+                mFlingTimeMills = currentTimeMillis;
+            }
+        }
 
         postDelayed(new Runnable() {
             @Override
             public void run() {
                 performFling();
+                invalidate();
             }
         }, TIME_INTERVAL_FLING);
+    }
+
+    private static float calcInterValue(float from, float to, float ratio) {
+        return (1 - ratio) * from + ratio * to;
     }
 
     @SuppressWarnings("WeakerAccess")
@@ -796,7 +923,12 @@ public class LyricView extends View {
         IDLE,
 
         /**
-         * 滚动中
+         * 滚动并缩放文字
+         */
+        SCROLLING_WITH_SCALE,
+
+        /**
+         * 滚动
          */
         SCROLLING,
 
@@ -809,5 +941,10 @@ public class LyricView extends View {
          * 惯性滑动
          */
         FLINGING,
+
+        /**
+         * 停留状态
+         */
+        STOP,
     }
 }
