@@ -65,20 +65,23 @@ public class LyricView extends View {
     private int mTextColor = COLOR_TEXT;
     private float mTextSize = TEXT_SIZE;
     private float mHighlightTextSize = TEXT_SIZE_HIGHLIGHT;
-
+    /**
+     * pixel / mills^2
+     */
+    private float mFlingAccelerate = 0.005f;
 
     // temp values
-
-    private int mWidth;
-    private int mHeight;
-    private float mTouchStartY;
-    private float mScrollOffsetYTo;
-    private float mScrollOffsetYFrom;
 
     /**
      * 第0行到控件顶部的距离
      */
     private float mCurrentOffsetY;
+    private InternalHandler mHandler;
+    private int mWidth;
+    private int mHeight;
+    private float mTouchStartY;
+    private float mScrollOffsetYTo;
+    private float mScrollOffsetYFrom;
     private float mTextHeight;
     private Paint mTextPaint;
     private Paint mHighlightTextPaint;
@@ -87,6 +90,7 @@ public class LyricView extends View {
     private Paint mZoomInPaint;
     private Paint mKaraokeZoomInPaint;
     private Paint.FontMetrics mTextFontMetrics;
+    private Paint.FontMetrics mHighlightFontMetrics;
     private Bitmap mKaraokeBitmap;
     private Canvas mKaraokeCanvas;
     private Rect mSrc = new Rect();
@@ -97,28 +101,20 @@ public class LyricView extends View {
      * pixel / mills
      */
     private float mFlingVelocity;
-
-    /**
-     * pixel / mills^2
-     */
-    private float mFlingAccelerate = 0.005f;
-
     private int mLastLineIndex = -1;
     private int mCurrentLineIndex = -1;
     private float mScrollVelocity = 0.15f;
-    private Paint.FontMetrics mHighlightFontMetrics;
     private float mHighlightTextHeight;
     private long mUpdateTimeMills;
     private long mFlingTimeMills;
     private float mFlingMinOffsetY;
     private float mFlingMaxOffsetY;
+    private float mTouchMinOffsetY;
+    private float mTouchMaxOffsetY;
 
     // listeners
 
     private TouchListener mTouchListener;
-    private float mTouchMinOffsetY;
-    private float mTouchMaxOffsetY;
-    private InternalHandler mHandler;
 
 
     public LyricView(Context context) {
@@ -491,6 +487,8 @@ public class LyricView extends View {
         savedState.mHighlightColor = mHighlightColor;
         savedState.mTextColor = mTextColor;
         savedState.mTextSize = mTextSize;
+        savedState.mHighlightTextSize = mHighlightTextSize;
+        savedState.mFlingAccelerate = mFlingAccelerate;
 
         return savedState;
     }
@@ -514,6 +512,8 @@ public class LyricView extends View {
         mHighlightColor = savedState.mHighlightColor;
         mTextColor = savedState.mTextColor;
         mTextSize = savedState.mTextSize;
+        mHighlightTextSize = savedState.mHighlightTextSize;
+        mFlingAccelerate = savedState.mFlingAccelerate;
     }
 
     @Override
@@ -861,6 +861,9 @@ public class LyricView extends View {
         private int mHighlightColor;
         private int mTextColor;
         private float mTextSize;
+        private float mHighlightTextSize;
+        private float mFlingAccelerate;
+
 
         SavedState(Parcelable superState) {
             super(superState);
@@ -876,6 +879,8 @@ public class LyricView extends View {
             this.mHighlightColor = in.readInt();
             this.mTextColor = in.readInt();
             this.mTextSize = in.readFloat();
+            this.mHighlightTextSize = in.readFloat();
+            this.mFlingAccelerate = in.readFloat();
         }
 
         @Override
@@ -885,8 +890,6 @@ public class LyricView extends View {
 
         @Override
         public void writeToParcel(Parcel dest, int flags) {
-            super.writeToParcel(dest, flags);
-
             dest.writeTypedList(this.mLines);
             dest.writeLong(this.mCurrentTimeMills);
             dest.writeFloat(this.mLineSpacing);
@@ -895,6 +898,8 @@ public class LyricView extends View {
             dest.writeInt(this.mHighlightColor);
             dest.writeInt(this.mTextColor);
             dest.writeFloat(this.mTextSize);
+            dest.writeFloat(this.mHighlightTextSize);
+            dest.writeFloat(this.mFlingAccelerate);
         }
 
         public static final Parcelable.Creator<SavedState> CREATOR = new Parcelable.Creator<SavedState>() {
