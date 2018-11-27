@@ -7,6 +7,8 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.os.Handler;
+import android.os.Message;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.support.annotation.Nullable;
@@ -17,6 +19,7 @@ import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -48,7 +51,7 @@ public class LyricView extends View {
     public static final int TIME_INTERVAL_SCROLL = 20;
     public static final int TIME_INTERVAL_FLING = 20;
     public static final int SCROLL_TIME = 300;
-    public static final int STAY_MILLIS = 2000;
+    public static final int STOP_MILLIS = 2000;
 
 
     // attributes
@@ -98,7 +101,7 @@ public class LyricView extends View {
     /**
      * pixel / mills^2
      */
-    private float mFlingAccelerate = 0.01f;
+    private float mFlingAccelerate = 0.005f;
 
     private int mLastLineIndex = -1;
     private int mCurrentLineIndex = -1;
@@ -115,6 +118,7 @@ public class LyricView extends View {
     private TouchListener mTouchListener;
     private float mTouchMinOffsetY;
     private float mTouchMaxOffsetY;
+    private InternalHandler mHandler;
 
 
     public LyricView(Context context) {
@@ -146,15 +150,24 @@ public class LyricView extends View {
         mKaraokePaint.setTextSize(mHighlightTextSize);
         mKaraokePaint.setColor(mKaraokeColor);
         mKaraokePaint.setAntiAlias(true);
+        mKaraokePaint.setFakeBoldText(true);
         mSrc.bottom = (int) Math.ceil(mHighlightTextHeight);
 
         mZoomOutPaint = new Paint();
+        mZoomOutPaint.setAntiAlias(true);
+
         mZoomInPaint = new Paint();
+        mZoomInPaint.setAntiAlias(true);
+
+
         mKaraokeZoomInPaint = new Paint();
+        mKaraokeZoomInPaint.setAntiAlias(true);
+        mKaraokeZoomInPaint.setFakeBoldText(true);
 
         mKaraokeZoomInPaint.setColor(mKaraokeColor);
         mZoomInPaint.setColor(mHighlightColor);
 
+        mHandler = new InternalHandler();
 //        LinearGradient highlightShader = new LinearGradient(0, 0, 0, mTextHeight,
 //                new int[]{0xffffeaba, 0xffffffff},
 //                null, Shader.TileMode.REPEAT);
@@ -454,49 +467,6 @@ public class LyricView extends View {
         return super.onTouchEvent(event);
     }
 
-    private float limit(float value, float min, float max) {
-        if (min > max) {
-            throw new IllegalArgumentException();
-        }
-        return Math.min(Math.max(min, value), max);
-    }
-
-    private void updateState(State state) {
-        mState = state;
-
-        switch (mState) {
-            case IDLE:
-                if (mUpdateTimeMills != 0) {
-                    updateTimeMills(mUpdateTimeMills);
-                    mUpdateTimeMills = 0;
-                }
-                break;
-
-            case STOP:
-                postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (mState != State.STOP) {
-                            return;
-                        }
-                        float offsetY = mHeight / 2 - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
-                        if (mCurrentOffsetY == offsetY) {
-                            updateState(State.IDLE);
-                            return;
-                        }
-                        mScrollOffsetYFrom = mCurrentOffsetY;
-                        mScrollOffsetYTo = offsetY;
-                        mScrollVelocity = Math.abs(mScrollOffsetYTo - mScrollOffsetYFrom) / SCROLL_TIME;
-                        updateState(State.SCROLLING);
-                        performScroll();
-                    }
-                }, STAY_MILLIS);
-                break;
-
-            default:
-        }
-    }
-
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
@@ -755,6 +725,53 @@ public class LyricView extends View {
         return (1 - ratio) * from + ratio * to;
     }
 
+    private float limit(float value, float min, float max) {
+        if (min > max) {
+            throw new IllegalArgumentException();
+        }
+        return Math.min(Math.max(min, value), max);
+    }
+
+    private void updateState(State state) {
+        mState = state;
+
+        switch (mState) {
+            case IDLE:
+                if (mUpdateTimeMills != 0) {
+                    updateTimeMills(mUpdateTimeMills);
+                    mUpdateTimeMills = 0;
+                }
+                break;
+
+            case STOP:
+                mHandler.removeMessages(InternalHandler.STOP_OVER);
+                mHandler.sendEmptyMessageDelayed(InternalHandler.STOP_OVER, STOP_MILLIS);
+                Message message = Message.obtain();
+                message.what = InternalHandler.STOP_OVER;
+                message.obj = new WeakReference<>(this);
+                mHandler.sendMessageDelayed(message, STOP_MILLIS);
+                break;
+
+            default:
+        }
+    }
+
+    private void onStopOver() {
+        if (mState != State.STOP) {
+            return;
+        }
+        float offsetY = mHeight / 2 - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
+        if (mCurrentOffsetY == offsetY) {
+            updateState(State.IDLE);
+            return;
+        }
+        mScrollOffsetYFrom = mCurrentOffsetY;
+        mScrollOffsetYTo = offsetY;
+        mScrollVelocity = Math.abs(mScrollOffsetYTo - mScrollOffsetYFrom) / SCROLL_TIME;
+        updateState(State.SCROLLING);
+        performScroll();
+    }
+
     @SuppressWarnings("WeakerAccess")
     public static class Line implements Parcelable {
         private long startMills;
@@ -891,6 +908,27 @@ public class LyricView extends View {
                 return new SavedState[size];
             }
         };
+    }
+
+    private static class InternalHandler extends Handler {
+        private static final int STOP_OVER = 100;
+
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+                case STOP_OVER:
+                    if (msg.obj instanceof WeakReference) {
+                        WeakReference reference = (WeakReference) msg.obj;
+                        Object o = reference.get();
+                        if (o instanceof LyricView) {
+                            LyricView view = (LyricView) o;
+                            view.onStopOver();
+                        }
+                    }
+                    break;
+                default:
+            }
+        }
     }
 
     public interface TouchListener {
