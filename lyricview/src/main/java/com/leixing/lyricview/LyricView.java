@@ -39,8 +39,8 @@ public class LyricView extends View {
 
     // default values
 
-    public static final float TEXT_SIZE = 20.0f;
-    public static final float TEXT_SIZE_HIGHLIGHT = 40.0f;
+    public static final float TEXT_SIZE = 60.0f;
+    public static final float TEXT_SIZE_HIGHLIGHT = 80.0f;
     public static final float LINE_SPACING = 10.0f;
 
     public static final int COLOR_TEXT = 0xff000000;
@@ -115,6 +115,7 @@ public class LyricView extends View {
     // listeners
 
     private TouchListener mTouchListener;
+    private ColorDesigner mColorDesigner;
 
 
     public LyricView(Context context) {
@@ -164,15 +165,6 @@ public class LyricView extends View {
         mZoomInPaint.setColor(mHighlightColor);
 
         mHandler = new InternalHandler();
-//        LinearGradient highlightShader = new LinearGradient(0, 0, 0, mTextHeight,
-//                new int[]{0xffffeaba, 0xffffffff},
-//                null, Shader.TileMode.REPEAT);
-//        mHighlightTextPaint.setShader(highlightShader);
-//
-//        LinearGradient karaokeShader = new LinearGradient(0, 0, 0, mTextHeight,
-//                new int[]{0xffffffff, 0xff0000ff},
-//                null, Shader.TileMode.REPEAT);
-//        mKaraokePaint.setShader(karaokeShader);
     }
 
     public void setLyric(List<Line> lines) {
@@ -345,6 +337,10 @@ public class LyricView extends View {
         mTouchListener = listener;
     }
 
+    public void setColorDesigner(ColorDesigner colorDesigner) {
+        mColorDesigner = colorDesigner;
+    }
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
@@ -363,6 +359,7 @@ public class LyricView extends View {
             float top = offsetY - textHeight / 2;
             float baseLine = top - ascent;
             float bottom = offsetY + textHeight / 2;
+            float offsetYFromCenter = offsetY - mHeight / 2;
 
             if (top > mHeight || bottom < 0) {
                 // out of bounds
@@ -377,10 +374,16 @@ public class LyricView extends View {
             if (hasScaleAnimation()) {
                 if (i == mLastLineIndex) {
                     float x = ((int) (mWidth - mZoomOutPaint.measureText(content))) >> 1;
+                    if (mColorDesigner != null) {
+                        mZoomOutPaint.setColor(mColorDesigner.getColor(offsetYFromCenter, mHeight));
+                    }
                     canvas.drawText(content, x, baseLine, mZoomOutPaint);
                     continue;
                 } else if (i == mCurrentLineIndex) {
                     float x = ((int) (mWidth - mZoomInPaint.measureText(content))) >> 1;
+                    if (mColorDesigner != null) {
+                        mZoomInPaint.setColor(mColorDesigner.getColor(offsetYFromCenter, mHeight));
+                    }
                     canvas.drawText(content, x, baseLine, mZoomInPaint);
 
                     if (misKaraokeEnable) {
@@ -391,6 +394,9 @@ public class LyricView extends View {
             }
             if (isHighlight) {
                 float x = ((int) (mWidth - mHighlightTextPaint.measureText(content))) >> 1;
+                if (mColorDesigner != null) {
+                    mHighlightTextPaint.setColor(mColorDesigner.getColor(offsetYFromCenter, mHeight));
+                }
                 canvas.drawText(content, x, baseLine, mHighlightTextPaint);
 
                 if (misKaraokeEnable) {
@@ -398,6 +404,9 @@ public class LyricView extends View {
                 }
             } else {
                 float x = ((int) (mWidth - mTextPaint.measureText(content))) >> 1;
+                if (mColorDesigner != null) {
+                    mTextPaint.setColor(mColorDesigner.getColor(offsetYFromCenter, mHeight));
+                }
                 canvas.drawText(content, x, baseLine, mTextPaint);
             }
         }
@@ -989,5 +998,9 @@ public class LyricView extends View {
          * 停留状态
          */
         STOP,
+    }
+
+    public interface ColorDesigner {
+        int getColor(float offsetYFromCenter, int height);
     }
 }

@@ -83,6 +83,9 @@ public class LyricActivity extends Activity {
             }
         });
 
+        lvLyric.setColorDesigner(new LyricColorDesigner(80.0f, 60.0f, 10.0f,
+                0xffff00ff, 0xffff0000, 0xff00ff00));
+
         findViewById(R.id.bt_set).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
