@@ -1,8 +1,6 @@
-package com.leixing.demo;
+package com.leixing.lyricview;
 
 import android.util.Log;
-
-import com.leixing.lyricview.LyricView;
 
 /**
  * description : xxx
@@ -11,7 +9,7 @@ import com.leixing.lyricview.LyricView;
  * email : leixing@baidu.com
  * @date : 2018/12/19 20:24
  */
-public class LyricColorDesigner implements LyricView.ColorDesigner {
+public class LyricColorDesigner implements ColorDesigner {
     private static final String TAG = LyricColorDesigner.class.getSimpleName();
 
     private final float mHighlightTextHeight;

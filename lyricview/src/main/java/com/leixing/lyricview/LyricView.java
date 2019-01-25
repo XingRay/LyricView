@@ -156,7 +156,6 @@ public class LyricView extends View {
         mZoomInPaint = new Paint();
         mZoomInPaint.setAntiAlias(true);
 
-
         mKaraokeZoomInPaint = new Paint();
         mKaraokeZoomInPaint.setAntiAlias(true);
         mKaraokeZoomInPaint.setFakeBoldText(true);
@@ -184,11 +183,11 @@ public class LyricView extends View {
     private void reset() {
         updateState(State.IDLE);
 
-        mFlingMinOffsetY = mHeight / 2 - computeOffsetYByIndex(mLines.size() - 1, 0);
-        mFlingMaxOffsetY = mHeight / 2;
+        mFlingMinOffsetY = (mHeight >> 1) - computeOffsetYByIndex(mLines.size() - 1, 0);
+        mFlingMaxOffsetY = mHeight >> 1;
 
-        mTouchMinOffsetY = mHeight / 2 - computeOffsetYByIndex(mLines.size() + 3, 0);
-        mTouchMaxOffsetY = mHeight / 2 + computeOffsetYByIndex(3, 0);
+        mTouchMinOffsetY = (mHeight >> 1) - computeOffsetYByIndex(mLines.size() + 3, 0);
+        mTouchMaxOffsetY = (mHeight >> 1) + computeOffsetYByIndex(3, 0);
     }
 
     public void setTextSize(float textSize) {
@@ -270,7 +269,7 @@ public class LyricView extends View {
             mCurrentLineIndex = index;
         }
         // 第0行到控件顶部的距离
-        float offsetY = mHeight / 2 - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
+        float offsetY = (mHeight >> 1) - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
 
         switch (mState) {
             case IDLE:
@@ -310,7 +309,7 @@ public class LyricView extends View {
             mLastLineIndex = mCurrentLineIndex;
             mCurrentLineIndex = index;
         }
-        mCurrentOffsetY = mHeight / 2 - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
+        mCurrentOffsetY = (mHeight >> 1) - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
         Log.i(TAG, "updateTimeMills"
                 + "\nmCurrentOffsetY:" + mCurrentOffsetY
                 + "");
@@ -479,7 +478,7 @@ public class LyricView extends View {
 
         mWidth = w;
         mHeight = h;
-        mCurrentOffsetY = mHeight / 2 - computeOffsetYByTimeMills(mCurrentTimeMills);
+        mCurrentOffsetY = (mHeight >> 1) - computeOffsetYByTimeMills(mCurrentTimeMills);
     }
 
     @Nullable
@@ -998,9 +997,5 @@ public class LyricView extends View {
          * 停留状态
          */
         STOP,
-    }
-
-    public interface ColorDesigner {
-        int getColor(float offsetYFromCenter, int height);
     }
 }

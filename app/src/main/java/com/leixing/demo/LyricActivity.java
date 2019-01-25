@@ -5,20 +5,22 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.support.annotation.Nullable;
+import android.support.v7.widget.AppCompatSeekBar;
 import android.util.Log;
 import android.view.View;
-import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import com.leixing.demo.util.TaskExecutor;
 import com.leixing.demo.util.TimeUtil;
+import com.leixing.lyricview.LyricColorDesigner;
 import com.leixing.lyricview.LyricView;
 import com.leixing.lyricview.helper.Lyric;
 import com.leixing.lyricview.helper.LyricLine;
 import com.leixing.lyricview.helper.LyricUtil;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,14 +33,19 @@ import java.util.List;
  */
 public class LyricActivity extends Activity {
     private static final String TAG = MainActivity.class.getSimpleName();
-
     public static final int DELAY_MILLIS = 200;
+
     private LyricView lvLyric;
-    private Runnable updateLyric;
-    private TextView tvTime;
     private View vLine;
-    private Lyric mLyric;
-    private EditText etTime;
+    private TextView tvProgress;
+    private AppCompatSeekBar sbSeekBar;
+    private TextView tvDuration;
+    private ImageView ivPrevious;
+    private ImageView ivPlayOrPause;
+    private ImageView ivNext;
+
+    private List<Lyric> mLyrics;
+    private int mPosition;
 
 
     public static void start(Context context) {
@@ -52,20 +59,45 @@ public class LyricActivity extends Activity {
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        initVariables();
+        initView();
+        loadData();
+    }
 
+    private void initVariables() {
+        mLyrics = new ArrayList<>();
+        mPosition = 0;
+    }
+
+    private void initView() {
         setContentView(R.layout.activity_lyric);
+        findViews();
+        setListeners();
+    }
 
+    private void findViews() {
         lvLyric = findViewById(R.id.lv_lyric);
-        tvTime = findViewById(R.id.tv_time);
         vLine = findViewById(R.id.v_line);
-        etTime = findViewById(R.id.et_time);
+        sbSeekBar = findViewById(R.id.sb_seek_bar);
+        ivPrevious = findViewById(R.id.iv_previous);
+        ivPlayOrPause = findViewById(R.id.iv_play_or_pause);
+        ivNext = findViewById(R.id.iv_next);
+        lvLyric = findViewById(R.id.lv_lyric);
+        vLine = findViewById(R.id.v_line);
+        tvProgress = findViewById(R.id.tv_progress);
+        sbSeekBar = findViewById(R.id.sb_seek_bar);
+        tvDuration = findViewById(R.id.tv_duration);
+        ivPrevious = findViewById(R.id.iv_previous);
+        ivPlayOrPause = findViewById(R.id.iv_play_or_pause);
+        ivNext = findViewById(R.id.iv_next);
+    }
 
+    private void setListeners() {
         lvLyric.setTouchListener(new LyricView.TouchListener() {
             @Override
             public void onTouchDown(long timeMills) {
                 Log.i(TAG, "onTouchDown timeMills:" + timeMills);
                 vLine.setVisibility(View.VISIBLE);
-                tvTime.setVisibility(View.VISIBLE);
                 showTimeMills(timeMills);
             }
 
@@ -78,33 +110,47 @@ public class LyricActivity extends Activity {
             @Override
             public void onTouchUp(long timeMills) {
                 Log.i(TAG, "onTouchUp timeMills:" + timeMills);
-//                vLine.setVisibility(View.GONE);
-//                tvTime.setVisibility(View.GONE);
+
             }
         });
 
         lvLyric.setColorDesigner(new LyricColorDesigner(80.0f, 60.0f, 10.0f,
                 0xffff00ff, 0xffff0000, 0xff00ff00));
 
-        findViewById(R.id.bt_set).setOnClickListener(new View.OnClickListener() {
+        sbSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
-            public void onClick(View v) {
-                long timeMills = Long.parseLong(etTime.getText().toString());
-                lvLyric.setTimeMills(timeMills);
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser) {
+                    showTimeMills(progress);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                int progress = seekBar.getProgress();
+                setPlayerProgress(progress);
             }
         });
+    }
 
+    private void loadData() {
         TaskExecutor.io(new Runnable() {
             @Override
             public void run() {
                 try {
-                    InputStream inputStream = getAssets().open("一个人的北京.lyric");
-                    mLyric = LyricUtil.parseLyric(inputStream);
-//                    mLyric = makeLyric();
+                    String[] filenames = getAssets().list("./");
+                    for (String filename : filenames) {
+                        mLyrics.add(LyricUtil.parseLyric(getAssets().open(filename)));
+                    }
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            showLyric(mLyric);
+                            showLyric(mLyrics.get(mPosition));
                         }
                     });
                 } catch (IOException e) {
@@ -131,23 +177,14 @@ public class LyricActivity extends Activity {
 
     private void showTimeMills(long mills) {
         long[] times = TimeUtil.parseMills(mills);
-        tvTime.setText(times[3] + ":" + times[2] + ":" + times[1] + "." + times[0]);
+        tvProgress.setText(times[3] + ":" + times[2] + ":" + times[1] + "." + times[0]);
     }
 
     private void showLyric(final Lyric lyric) {
         lvLyric.setLyric(LyricUtil.toLines(lyric));
-        final long startTimeMills = System.currentTimeMillis();
-        updateLyric = new Runnable() {
-            @Override
-            public void run() {
-                long currentTimeMillis = System.currentTimeMillis() - startTimeMills;
-                lvLyric.updateTimeMills(currentTimeMillis + 30000);
-                List<LyricLine> lyricLines = lyric.getLyricLines();
-                if (currentTimeMillis < lyricLines.get(lyricLines.size() - 1).getStartTime()) {
-                    lvLyric.postDelayed(updateLyric, DELAY_MILLIS);
-                }
-            }
-        };
-        lvLyric.postDelayed(updateLyric, DELAY_MILLIS);
+    }
+
+    private void setPlayerProgress(int progress) {
+
     }
 }

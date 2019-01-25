@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">LyricView</string>
+    <string name="lyric_test">lyric test</string>
 </resources>
