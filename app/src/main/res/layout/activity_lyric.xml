@@ -11,7 +11,7 @@
         android:id="@+id/lv_lyric"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toTopOf="@id/sb_seek_bar"
+        app:layout_constraintBottom_toTopOf="@id/v_op"
         app:layout_constraintTop_toTopOf="parent" />
 
     <View
@@ -21,6 +21,13 @@
         android:background="#3333"
         app:layout_constraintBottom_toBottomOf="@id/lv_lyric"
         app:layout_constraintTop_toTopOf="@id/lv_lyric" />
+
+    <View
+        android:id="@+id/v_op"
+        android:layout_width="match_parent"
+        android:layout_height="90dp"
+        android:background="#accc"
+        app:layout_constraintBottom_toBottomOf="parent" />
 
     <TextView
         android:id="@+id/tv_progress"

@@ -59,7 +59,7 @@ public class LyricView extends View {
     private List<Line> mLines = new ArrayList<>();
     private long mCurrentTimeMills = 0;
     private float mLineSpacing = LINE_SPACING;
-    private boolean misKaraokeEnable = true;
+    private boolean mKaraokeEnable = true;
     private int mKaraokeColor = COLOR_KARAOKE;
     private int mHighlightColor = COLOR_HIGHLIGHT;
     private int mTextColor = COLOR_TEXT;
@@ -79,6 +79,7 @@ public class LyricView extends View {
     private InternalHandler mHandler;
     private int mWidth;
     private int mHeight;
+    private int mHalfHeight;
     private float mTouchStartY;
     private float mScrollOffsetYTo;
     private float mScrollOffsetYFrom;
@@ -183,15 +184,13 @@ public class LyricView extends View {
     private void reset() {
         updateState(State.IDLE);
 
-        int height = mHeight >> 1;
+        mFlingMinOffsetY = mHalfHeight - computeOffsetYByIndex(mLines.size() - 1, 0);
+        mFlingMaxOffsetY = mHalfHeight;
 
-        mFlingMinOffsetY = height - computeOffsetYByIndex(mLines.size() - 1, 0);
-        mFlingMaxOffsetY = height;
+        mTouchMinOffsetY = mHalfHeight - computeOffsetYByIndex(mLines.size() + 3, 0);
+        mTouchMaxOffsetY = mHalfHeight + computeOffsetYByIndex(3, 0);
 
-        mTouchMinOffsetY = height - computeOffsetYByIndex(mLines.size() + 3, 0);
-        mTouchMaxOffsetY = height + computeOffsetYByIndex(3, 0);
-
-        mCurrentOffsetY = height;
+        mCurrentOffsetY = mHalfHeight;
     }
 
     public void setTextSize(float textSize) {
@@ -250,10 +249,10 @@ public class LyricView extends View {
     }
 
     public void setKaraokeEnable(boolean enable) {
-        if (misKaraokeEnable == enable) {
+        if (mKaraokeEnable == enable) {
             return;
         }
-        misKaraokeEnable = enable;
+        mKaraokeEnable = enable;
         invalidate();
     }
 
@@ -273,7 +272,7 @@ public class LyricView extends View {
             mCurrentLineIndex = index;
         }
         // 第0行到控件顶部的距离
-        float offsetY = (mHeight >> 1) - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
+        float offsetY = mHalfHeight - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
 
         switch (mState) {
             case IDLE:
@@ -284,7 +283,10 @@ public class LyricView extends View {
 
                 mScrollOffsetYFrom = mCurrentOffsetY;
                 mScrollOffsetYTo = offsetY;
-                mScrollVelocity = Math.abs(mScrollOffsetYTo - mScrollOffsetYFrom) / SCROLL_TIME;
+                Line line = mLines.get(mCurrentLineIndex);
+                long lineMills = line.endMills - line.startMills;
+                long scrollTime = Math.min(SCROLL_TIME, lineMills);
+                mScrollVelocity = Math.abs(mScrollOffsetYTo - mScrollOffsetYFrom) / scrollTime;
                 updateState(State.SCROLLING_WITH_SCALE);
                 performScroll();
                 break;
@@ -313,7 +315,7 @@ public class LyricView extends View {
             mLastLineIndex = mCurrentLineIndex;
             mCurrentLineIndex = index;
         }
-        mCurrentOffsetY = (mHeight >> 1) - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
+        mCurrentOffsetY = mHalfHeight - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
         Log.i(TAG, "updateTimeMills"
                 + "\nmCurrentOffsetY:" + mCurrentOffsetY
                 + "");
@@ -323,7 +325,7 @@ public class LyricView extends View {
     private void scrollToLine(int index, boolean smooth) {
         Line line = mLines.get(index);
         mCurrentTimeMills = line.startMills;
-        float offsetY = mHeight / 2 - computeOffsetYByIndex(index, index);
+        float offsetY = mHalfHeight - computeOffsetYByIndex(index, index);
         if (mCurrentOffsetY == offsetY) {
             return;
         }
@@ -362,7 +364,7 @@ public class LyricView extends View {
             float top = offsetY - textHeight / 2;
             float baseLine = top - ascent;
             float bottom = offsetY + textHeight / 2;
-            float offsetYFromCenter = offsetY - mHeight / 2;
+            float offsetYFromCenter = offsetY - mHalfHeight;
 
             if (top > mHeight || bottom < 0) {
                 // out of bounds
@@ -389,7 +391,7 @@ public class LyricView extends View {
                     }
                     canvas.drawText(content, x, baseLine, mZoomInPaint);
 
-                    if (misKaraokeEnable) {
+                    if (mKaraokeEnable) {
                         drawKaraoke(canvas, mKaraokeZoomInPaint, x, baseLine, content, startMills, endMills);
                     }
                     continue;
@@ -402,7 +404,7 @@ public class LyricView extends View {
                 }
                 canvas.drawText(content, x, baseLine, mHighlightTextPaint);
 
-                if (misKaraokeEnable) {
+                if (mKaraokeEnable) {
                     drawKaraoke(canvas, mKaraokePaint, x, baseLine, content, startMills, endMills);
                 }
             } else {
@@ -482,7 +484,8 @@ public class LyricView extends View {
 
         mWidth = w;
         mHeight = h;
-        mCurrentOffsetY = (mHeight >> 1) - computeOffsetYByTimeMills(mCurrentTimeMills);
+        mHalfHeight = h >> 1;
+        mCurrentOffsetY = mHalfHeight - computeOffsetYByTimeMills(mCurrentTimeMills);
     }
 
     @Nullable
@@ -494,7 +497,7 @@ public class LyricView extends View {
         savedState.mLines = mLines;
         savedState.mCurrentTimeMills = mCurrentTimeMills;
         savedState.mLineSpacing = mLineSpacing;
-        savedState.misKaraokeEnable = misKaraokeEnable;
+        savedState.misKaraokeEnable = mKaraokeEnable;
         savedState.mKaraokeColor = mKaraokeColor;
         savedState.mHighlightColor = mHighlightColor;
         savedState.mTextColor = mTextColor;
@@ -519,7 +522,7 @@ public class LyricView extends View {
         mLines = savedState.mLines;
         mCurrentTimeMills = savedState.mCurrentTimeMills;
         mLineSpacing = savedState.mLineSpacing;
-        misKaraokeEnable = savedState.misKaraokeEnable;
+        mKaraokeEnable = savedState.misKaraokeEnable;
         mKaraokeColor = savedState.mKaraokeColor;
         mHighlightColor = savedState.mHighlightColor;
         mTextColor = savedState.mTextColor;
@@ -656,7 +659,7 @@ public class LyricView extends View {
     }
 
     private long getTimeMillsByOffsetY(float offsetY) {
-        int index = (int) (((mHeight >> 1) - offsetY) / (mTextHeight + mLineSpacing) + 0.5f);
+        int index = (int) ((mHalfHeight - offsetY) / (mTextHeight + mLineSpacing) + 0.5f);
         if (index < 0) {
             index = 0;
         } else if (index >= mLines.size()) {
@@ -772,7 +775,7 @@ public class LyricView extends View {
         if (mState != State.STOP) {
             return;
         }
-        float offsetY = mHeight / 2 - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
+        float offsetY = mHalfHeight - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
         if (mCurrentOffsetY == offsetY) {
             updateState(State.IDLE);
             return;
