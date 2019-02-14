@@ -17,9 +17,9 @@ import com.leixing.demo.util.TimeUtil;
 import com.leixing.lyricview.LyricColorDesigner;
 import com.leixing.lyricview.LyricView;
 import com.leixing.lyricview.helper.Lyric;
-import com.leixing.lyricview.helper.LyricLine;
 import com.leixing.lyricview.helper.LyricUtil;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,7 +46,7 @@ public class LyricActivity extends Activity {
 
     private List<Lyric> mLyrics;
     private int mPosition;
-
+    private Player mPlayer;
 
     public static void start(Context context) {
         Intent intent = new Intent(context, LyricActivity.class);
@@ -67,6 +67,23 @@ public class LyricActivity extends Activity {
     private void initVariables() {
         mLyrics = new ArrayList<>();
         mPosition = 0;
+
+        mPlayer = new Player();
+        mPlayer.setPlayerListener(new Player.PlayerListener() {
+            @Override
+            public void onProgress(long progress, long duration) {
+                lvLyric.updateTimeMills(progress);
+                sbSeekBar.setProgress((int) progress);
+                showProgress(progress);
+            }
+
+            @Override
+            public void onPlayingChanged(boolean isPlaying) {
+                ivPlayOrPause.setImageResource(isPlaying
+                        ? R.mipmap.icon_pause :
+                        R.mipmap.icon_play);
+            }
+        });
     }
 
     private void initView() {
@@ -98,13 +115,13 @@ public class LyricActivity extends Activity {
             public void onTouchDown(long timeMills) {
                 Log.i(TAG, "onTouchDown timeMills:" + timeMills);
                 vLine.setVisibility(View.VISIBLE);
-                showTimeMills(timeMills);
+                showProgress(timeMills);
             }
 
             @Override
             public void onTouchMoving(long timeMills) {
                 Log.i(TAG, "onTouchMoving timeMills:" + timeMills);
-                showTimeMills(timeMills);
+                showProgress(timeMills);
             }
 
             @Override
@@ -121,7 +138,7 @@ public class LyricActivity extends Activity {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if (fromUser) {
-                    showTimeMills(progress);
+                    showProgress(progress);
                 }
             }
 
@@ -136,6 +153,35 @@ public class LyricActivity extends Activity {
                 setPlayerProgress(progress);
             }
         });
+
+        ivNext.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                playNext();
+            }
+        });
+
+        ivPrevious.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                playPrevious();
+            }
+        });
+
+        ivPlayOrPause.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mPlayer.playOrPause();
+            }
+        });
+    }
+
+    private void playNext() {
+        playPosition((mPosition + 1) % mLyrics.size());
+    }
+
+    private void playPrevious() {
+        playPosition((mPosition - 1) % mLyrics.size());
     }
 
     private void loadData() {
@@ -143,14 +189,15 @@ public class LyricActivity extends Activity {
             @Override
             public void run() {
                 try {
-                    String[] filenames = getAssets().list("./");
+                    String[] filenames = getAssets().list("lyric");
                     for (String filename : filenames) {
-                        mLyrics.add(LyricUtil.parseLyric(getAssets().open(filename)));
+                        Lyric lyric = LyricUtil.parseLyric(getAssets().open("lyric" + File.separator + filename));
+                        mLyrics.add(lyric);
                     }
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            showLyric(mLyrics.get(mPosition));
+                            playPosition(0);
                         }
                     });
                 } catch (IOException e) {
@@ -160,31 +207,42 @@ public class LyricActivity extends Activity {
         });
     }
 
-    private Lyric makeLyric() {
-        Lyric lyric = new Lyric();
-        List<LyricLine> lines = new ArrayList<>();
-
-        for (int i = 0; i < 1000; i++) {
-            LyricLine line = new LyricLine();
-            line.setContent("测试测试测试测试测试测试测试" + i);
-            line.setStartTime(i * 1000);
-            lines.add(line);
-        }
-
-        lyric.setLyricLines(lines);
-        return lyric;
+    private void playPosition(int position) {
+        mPosition = position;
+        Lyric lyric = mLyrics.get(mPosition);
+        List<LyricView.Line> lines = LyricUtil.toLines(lyric);
+        lvLyric.setLyric(lines);
+        long duration = lines.get(lines.size() - 1).getEndMills();
+        mPlayer.play(duration);
+        showDuration(duration);
+        sbSeekBar.setMax((int) duration);
     }
 
-    private void showTimeMills(long mills) {
-        long[] times = TimeUtil.parseMills(mills);
-        tvProgress.setText(times[3] + ":" + times[2] + ":" + times[1] + "." + times[0]);
+    private void showProgress(long mills) {
+        tvProgress.setText(getFormattedTime(mills));
     }
 
-    private void showLyric(final Lyric lyric) {
-        lvLyric.setLyric(LyricUtil.toLines(lyric));
+    private void showDuration(long mills) {
+        tvDuration.setText(getFormattedTime(mills));
     }
 
     private void setPlayerProgress(int progress) {
+        mPlayer.setProgress(progress);
+    }
 
+    private String getFormattedTime(long mills) {
+        long[] times = TimeUtil.parseMills(mills);
+        StringBuilder builder = new StringBuilder();
+        for (int i = 3; i >= 1; i--) {
+            long time = times[i];
+            if (time < 10) {
+                builder.append("0");
+            }
+            builder.append(time);
+            if (i > 1) {
+                builder.append(":");
+            }
+        }
+        return builder.toString();
     }
 }

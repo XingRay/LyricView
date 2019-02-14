@@ -183,11 +183,15 @@ public class LyricView extends View {
     private void reset() {
         updateState(State.IDLE);
 
-        mFlingMinOffsetY = (mHeight >> 1) - computeOffsetYByIndex(mLines.size() - 1, 0);
-        mFlingMaxOffsetY = mHeight >> 1;
+        int height = mHeight >> 1;
 
-        mTouchMinOffsetY = (mHeight >> 1) - computeOffsetYByIndex(mLines.size() + 3, 0);
-        mTouchMaxOffsetY = (mHeight >> 1) + computeOffsetYByIndex(3, 0);
+        mFlingMinOffsetY = height - computeOffsetYByIndex(mLines.size() - 1, 0);
+        mFlingMaxOffsetY = height;
+
+        mTouchMinOffsetY = height - computeOffsetYByIndex(mLines.size() + 3, 0);
+        mTouchMaxOffsetY = height + computeOffsetYByIndex(3, 0);
+
+        mCurrentOffsetY = height;
     }
 
     public void setTextSize(float textSize) {

@@ -1,5 +1,10 @@
 package com.leixing.demo;
 
+import com.leixing.lib.handlercounter.CountListener;
+import com.leixing.lib.handlercounter.CounterStatus;
+import com.leixing.lib.handlercounter.CounterStatusListener;
+import com.leixing.lib.handlercounter.HandlerCounter;
+
 /**
  * description : xxx
  *
@@ -8,40 +13,81 @@ package com.leixing.demo;
  * @date : 2019/1/25 21:41
  */
 public class Player {
-    private int progress;
-    private int duration;
+    /**
+     * mills
+     */
+    private long mDuration;
+
+    private PlayerListener mPlayerListener;
+    private final HandlerCounter mCounter;
+    private boolean mIsPlaying;
 
     public Player() {
+        mCounter = new HandlerCounter()
+                .countInterval(1000)
+                .stepSize(1000)
+                .countListener(new CountListener() {
+                    @Override
+                    public void onCount(long l) {
+                        if (mPlayerListener != null) {
+                            mPlayerListener.onProgress(l, mDuration);
+                        }
+                    }
+                })
+                .counterStatusListener(new CounterStatusListener() {
+                    @Override
+                    public void onNewStatus(CounterStatus counterStatus) {
+                        boolean isPlaying = mIsPlaying;
+                        mIsPlaying = counterStatus == CounterStatus.RUNNING;
+                        if (mIsPlaying != isPlaying && mPlayerListener != null) {
+                            mPlayerListener.onPlayingChanged(mIsPlaying);
+                        }
+                    }
+                });
+
+        mIsPlaying = false;
     }
 
-    public int getProgress() {
-        return progress;
+    public void play(long duration) {
+        play(0, duration);
     }
 
-    public Player setProgress(int progress) {
-        this.progress = progress;
-        return this;
+    public void play(long progress, long duration) {
+        if (progress < 0) {
+            throw new IllegalArgumentException();
+        }
+        if (duration < progress) {
+            throw new IllegalArgumentException();
+        }
+
+        mDuration = duration;
+        mCounter.stop();
+        mCounter.startValue(progress)
+                .endValue(duration)
+                .start();
     }
 
-    public int getDuration() {
-        return duration;
+    public void setPlayerListener(PlayerListener listener) {
+        mPlayerListener = listener;
     }
 
-    public Player setDuration(int duration) {
-        this.duration = duration;
-        return this;
+    public void setProgress(int progress) {
+        mCounter.pause();
+        mCounter.currentValue(progress);
+        mCounter.restart();
     }
 
-    public void start(){
-
+    public void playOrPause() {
+        if (mIsPlaying) {
+            mCounter.pause();
+        } else {
+            mCounter.restart();
+        }
     }
 
-    public void stop(){
+    public interface PlayerListener {
+        void onProgress(long progress, long duration);
 
+        void onPlayingChanged(boolean isPlaying);
     }
-
-    public interface PlayerListener{
-        void onProgress(int progress);
-    }
-
 }
