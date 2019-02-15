@@ -2,6 +2,7 @@ package com.leixing.lyricview;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -39,36 +40,55 @@ public class LyricView extends View {
 
     // default values
 
-    public static final float TEXT_SIZE = 60.0f;
-    public static final float TEXT_SIZE_HIGHLIGHT = 80.0f;
-    public static final float LINE_SPACING = 10.0f;
+    private static final int TEXT_COLOR_DEFAULT = 0xff000000;
+    private static final float TEXT_SIZE_DEFAULT = 60.0f;
 
-    public static final int COLOR_TEXT = 0xff000000;
-    public static final int COLOR_HIGHLIGHT = 0xffff0000;
-    public static final int COLOR_KARAOKE = 0xff0000ff;
+    private static final int HIGHLIGHT_TEXT_COLOR_DEFAULT = 0xffff0000;
+    private static final float HIGHLIGHT_TEXT_SIZE_DEFAULT = 80.0f;
 
-    public static final int SCROLL_SLOT = 20;
-    public static final int TIME_INTERVAL_SCROLL = 20;
-    public static final int TIME_INTERVAL_FLING = 20;
-    public static final int SCROLL_TIME = 300;
-    public static final int STOP_MILLIS = 2000;
+    private static final int KARAOKE_TEXT_COLOR_DEFAULT = 0xff0000ff;
+    private static final boolean KARAOKE_ENABLE_DEFAULT = true;
+
+    private static final float LINE_SPACING_DEFAULT = 10.0f;
+    private static final int SCROLL_TIME_INTERVAL_DEFAULT = 20;
+    private static final int FLING_TIME_INTERVAL_DEFAULT = 20;
+
+    private static final int SCROLL_TIME_MAX_DEFAULT = 300;
+    private static final float FLING_ACCELERATE_DEFAULT = 0.005f;
+
+    private static final int STOP_TIME_DEFAULT = 2000;
+    private static final boolean AUTO_SCROLL_BACK_DEFAULT = true;
 
 
     // attributes
 
-    private List<Line> mLines = new ArrayList<>();
-    private long mCurrentTimeMills = 0;
-    private float mLineSpacing = LINE_SPACING;
-    private boolean mKaraokeEnable = true;
-    private int mKaraokeColor = COLOR_KARAOKE;
-    private int mHighlightColor = COLOR_HIGHLIGHT;
-    private int mTextColor = COLOR_TEXT;
-    private float mTextSize = TEXT_SIZE;
-    private float mHighlightTextSize = TEXT_SIZE_HIGHLIGHT;
+    private int mTextColor;
+    private float mTextSize;
+
+    private int mHighlightTextColor;
+    private float mHighlightTextSize;
+
+    private boolean mKaraokeEnable;
+    private int mKaraokeTextColor;
+
     /**
      * pixel / mills^2
      */
-    private float mFlingAccelerate = 0.005f;
+    private float mFlingAccelerate;
+    private int mFlingTimeInterval;
+
+    private float mLineSpacing;
+
+    private int mScrollTimeInterval;
+    private int mScrollTimeMax;
+
+    private boolean mAutoScrollBack;
+    private int mStopTime;
+
+    // saved state
+
+    private List<Line> mLines = new ArrayList<>();
+    private long mCurrentTimeMills = 0;
 
     // temp values
 
@@ -104,7 +124,7 @@ public class LyricView extends View {
     private float mFlingVelocity;
     private int mLastLineIndex = -1;
     private int mCurrentLineIndex = -1;
-    private float mScrollVelocity = 0.15f;
+    private float mScrollVelocity;
     private float mHighlightTextHeight;
     private long mUpdateTimeMills;
     private long mFlingTimeMills;
@@ -130,6 +150,8 @@ public class LyricView extends View {
     public LyricView(Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
 
+        applyAttributes(context, attrs);
+
         mTextPaint = new Paint();
         mTextPaint.setTextSize(mTextSize);
         mTextPaint.setColor(mTextColor);
@@ -139,14 +161,14 @@ public class LyricView extends View {
 
         mHighlightTextPaint = new Paint();
         mHighlightTextPaint.setTextSize(mHighlightTextSize);
-        mHighlightTextPaint.setColor(mHighlightColor);
+        mHighlightTextPaint.setColor(mHighlightTextColor);
         mHighlightTextPaint.setAntiAlias(true);
         mHighlightFontMetrics = mHighlightTextPaint.getFontMetrics();
         mHighlightTextHeight = mHighlightFontMetrics.descent - mHighlightFontMetrics.ascent;
 
         mKaraokePaint = new Paint();
         mKaraokePaint.setTextSize(mHighlightTextSize);
-        mKaraokePaint.setColor(mKaraokeColor);
+        mKaraokePaint.setColor(mKaraokeTextColor);
         mKaraokePaint.setAntiAlias(true);
         mKaraokePaint.setFakeBoldText(true);
         mSrc.bottom = (int) Math.ceil(mHighlightTextHeight);
@@ -161,36 +183,17 @@ public class LyricView extends View {
         mKaraokeZoomInPaint.setAntiAlias(true);
         mKaraokeZoomInPaint.setFakeBoldText(true);
 
-        mKaraokeZoomInPaint.setColor(mKaraokeColor);
-        mZoomInPaint.setColor(mHighlightColor);
+        mKaraokeZoomInPaint.setColor(mKaraokeTextColor);
+        mZoomInPaint.setColor(mHighlightTextColor);
 
         mHandler = new InternalHandler();
     }
 
     public void setLyric(List<Line> lines) {
-        mLines.clear();
-        if (lines != null) {
-            mLines.addAll(lines);
-        }
-        if (mLines.isEmpty()) {
-            return;
-        }
-
+        addLines(lines);
         reset();
         initKaraokeVariables();
         invalidate();
-    }
-
-    private void reset() {
-        updateState(State.IDLE);
-
-        mFlingMinOffsetY = mHalfHeight - computeOffsetYByIndex(mLines.size() - 1, 0);
-        mFlingMaxOffsetY = mHalfHeight;
-
-        mTouchMinOffsetY = mHalfHeight - computeOffsetYByIndex(mLines.size() + 3, 0);
-        mTouchMaxOffsetY = mHalfHeight + computeOffsetYByIndex(3, 0);
-
-        mCurrentOffsetY = mHalfHeight;
     }
 
     public void setTextSize(float textSize) {
@@ -228,23 +231,23 @@ public class LyricView extends View {
     }
 
     public void setHighlightColor(int color) {
-        if (mHighlightColor == color) {
+        if (mHighlightTextColor == color) {
             return;
         }
-        mHighlightColor = color;
-        mHighlightTextPaint.setColor(mHighlightColor);
-        mZoomInPaint.setColor(mHighlightColor);
+        mHighlightTextColor = color;
+        mHighlightTextPaint.setColor(mHighlightTextColor);
+        mZoomInPaint.setColor(mHighlightTextColor);
 
         invalidate();
     }
 
     public void setKaraokeColor(int color) {
-        if (mKaraokeColor == color) {
+        if (mKaraokeTextColor == color) {
             return;
         }
-        mKaraokeColor = color;
-        mKaraokePaint.setColor(mKaraokeColor);
-        mKaraokeZoomInPaint.setColor(mKaraokeColor);
+        mKaraokeTextColor = color;
+        mKaraokePaint.setColor(mKaraokeTextColor);
+        mKaraokeZoomInPaint.setColor(mKaraokeTextColor);
         invalidate();
     }
 
@@ -284,8 +287,8 @@ public class LyricView extends View {
                 mScrollOffsetYFrom = mCurrentOffsetY;
                 mScrollOffsetYTo = offsetY;
                 Line line = mLines.get(mCurrentLineIndex);
-                long lineMills = line.endMills - line.startMills;
-                long scrollTime = Math.min(SCROLL_TIME, lineMills);
+                long lineMills = line.endMills - mills;
+                long scrollTime = Math.min(mScrollTimeMax, lineMills);
                 mScrollVelocity = Math.abs(mScrollOffsetYTo - mScrollOffsetYFrom) / scrollTime;
                 updateState(State.SCROLLING_WITH_SCALE);
                 performScroll();
@@ -322,28 +325,17 @@ public class LyricView extends View {
         invalidate();
     }
 
-    private void scrollToLine(int index, boolean smooth) {
-        Line line = mLines.get(index);
-        mCurrentTimeMills = line.startMills;
-        float offsetY = mHalfHeight - computeOffsetYByIndex(index, index);
-        if (mCurrentOffsetY == offsetY) {
-            return;
-        }
-        if (smooth) {
-            mScrollOffsetYTo = offsetY;
-            performScroll();
-        } else {
-            mCurrentOffsetY = offsetY;
-            invalidate();
-        }
-    }
-
     public void setTouchListener(TouchListener listener) {
         mTouchListener = listener;
     }
 
     public void setColorDesigner(ColorDesigner colorDesigner) {
         mColorDesigner = colorDesigner;
+    }
+
+    public LyricView setAutoScrollBack(boolean autoScrollBack) {
+        mAutoScrollBack = autoScrollBack;
+        return this;
     }
 
     @Override
@@ -497,9 +489,9 @@ public class LyricView extends View {
         savedState.mLines = mLines;
         savedState.mCurrentTimeMills = mCurrentTimeMills;
         savedState.mLineSpacing = mLineSpacing;
-        savedState.misKaraokeEnable = mKaraokeEnable;
-        savedState.mKaraokeColor = mKaraokeColor;
-        savedState.mHighlightColor = mHighlightColor;
+        savedState.mKaraokeEnable = mKaraokeEnable;
+        savedState.mKaraokeTextColor = mKaraokeTextColor;
+        savedState.mHighlightTextColor = mHighlightTextColor;
         savedState.mTextColor = mTextColor;
         savedState.mTextSize = mTextSize;
         savedState.mHighlightTextSize = mHighlightTextSize;
@@ -522,9 +514,9 @@ public class LyricView extends View {
         mLines = savedState.mLines;
         mCurrentTimeMills = savedState.mCurrentTimeMills;
         mLineSpacing = savedState.mLineSpacing;
-        mKaraokeEnable = savedState.misKaraokeEnable;
-        mKaraokeColor = savedState.mKaraokeColor;
-        mHighlightColor = savedState.mHighlightColor;
+        mKaraokeEnable = savedState.mKaraokeEnable;
+        mKaraokeTextColor = savedState.mKaraokeTextColor;
+        mHighlightTextColor = savedState.mHighlightTextColor;
         mTextColor = savedState.mTextColor;
         mTextSize = savedState.mTextSize;
         mHighlightTextSize = savedState.mHighlightTextSize;
@@ -541,6 +533,51 @@ public class LyricView extends View {
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         // TODO: 2018/11/27
+    }
+
+    private void applyAttributes(Context context, AttributeSet attrs) {
+        TypedArray typedArray = context.obtainStyledAttributes(attrs, R.styleable.LyricView);
+        if (typedArray == null) {
+            return;
+        }
+
+        mTextColor = typedArray.getColor(R.styleable.LyricView_lyric_view_text_color, TEXT_COLOR_DEFAULT);
+        mTextSize = typedArray.getDimension(R.styleable.LyricView_lyric_view_text_size, TEXT_SIZE_DEFAULT);
+
+        mHighlightTextColor = typedArray.getColor(R.styleable.LyricView_lyric_view_highlight_text_color, HIGHLIGHT_TEXT_COLOR_DEFAULT);
+        mHighlightTextSize = typedArray.getDimension(R.styleable.LyricView_lyric_view_highlight_text_size, HIGHLIGHT_TEXT_SIZE_DEFAULT);
+
+        mKaraokeEnable = typedArray.getBoolean(R.styleable.LyricView_lyric_view_karaoke_enable, KARAOKE_ENABLE_DEFAULT);
+        mKaraokeTextColor = typedArray.getColor(R.styleable.LyricView_lyric_view_karaoke_color, KARAOKE_TEXT_COLOR_DEFAULT);
+
+        mLineSpacing = typedArray.getDimension(R.styleable.LyricView_lyric_view_line_spacing, LINE_SPACING_DEFAULT);
+
+        mFlingAccelerate = typedArray.getDimension(R.styleable.LyricView_lyric_view_fling_accelerate, FLING_ACCELERATE_DEFAULT);
+        mFlingTimeInterval = typedArray.getInt(R.styleable.LyricView_lyric_view_fling_time_interval, FLING_TIME_INTERVAL_DEFAULT);
+
+        mScrollTimeInterval = typedArray.getInt(R.styleable.LyricView_lyric_view_scroll_time_interval, SCROLL_TIME_INTERVAL_DEFAULT);
+        mScrollTimeMax = typedArray.getInt(R.styleable.LyricView_lyric_view_scroll_time_max, SCROLL_TIME_MAX_DEFAULT);
+
+        mStopTime = typedArray.getInt(R.styleable.LyricView_lyric_view_stop_time, STOP_TIME_DEFAULT);
+        mAutoScrollBack = typedArray.getBoolean(R.styleable.LyricView_lyric_view_auto_scroll_back, AUTO_SCROLL_BACK_DEFAULT);
+
+        typedArray.recycle();
+    }
+
+    private void scrollToLine(int index, boolean smooth) {
+        Line line = mLines.get(index);
+        mCurrentTimeMills = line.startMills;
+        float offsetY = mHalfHeight - computeOffsetYByIndex(index, index);
+        if (mCurrentOffsetY == offsetY) {
+            return;
+        }
+        if (smooth) {
+            mScrollOffsetYTo = offsetY;
+            performScroll();
+        } else {
+            mCurrentOffsetY = offsetY;
+            invalidate();
+        }
     }
 
     /**
@@ -608,7 +645,7 @@ public class LyricView extends View {
         }
 
         float deltaY = mScrollOffsetYTo - mCurrentOffsetY;
-        float distance = mScrollVelocity * TIME_INTERVAL_SCROLL;
+        float distance = mScrollVelocity * mScrollTimeInterval;
 
         if (Math.abs(deltaY) > distance) {
             mCurrentOffsetY += deltaY > 0 ? distance : -distance;
@@ -636,7 +673,7 @@ public class LyricView extends View {
             public void run() {
                 performScroll();
             }
-        }, TIME_INTERVAL_SCROLL);
+        }, mScrollTimeInterval);
     }
 
     private boolean hasScaleAnimation() {
@@ -733,7 +770,7 @@ public class LyricView extends View {
                 performFling();
                 invalidate();
             }
-        }, TIME_INTERVAL_FLING);
+        }, mFlingTimeInterval);
     }
 
     private static float calcInterValue(float from, float to, float ratio) {
@@ -760,11 +797,11 @@ public class LyricView extends View {
 
             case STOP:
                 mHandler.removeMessages(InternalHandler.STOP_OVER);
-                mHandler.sendEmptyMessageDelayed(InternalHandler.STOP_OVER, STOP_MILLIS);
+                mHandler.sendEmptyMessageDelayed(InternalHandler.STOP_OVER, mStopTime);
                 Message message = Message.obtain();
                 message.what = InternalHandler.STOP_OVER;
                 message.obj = new WeakReference<>(this);
-                mHandler.sendMessageDelayed(message, STOP_MILLIS);
+                mHandler.sendMessageDelayed(message, mStopTime);
                 break;
 
             default:
@@ -776,15 +813,84 @@ public class LyricView extends View {
             return;
         }
         float offsetY = mHalfHeight - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
-        if (mCurrentOffsetY == offsetY) {
+        if (mCurrentOffsetY == offsetY || !mAutoScrollBack) {
             updateState(State.IDLE);
             return;
         }
         mScrollOffsetYFrom = mCurrentOffsetY;
         mScrollOffsetYTo = offsetY;
-        mScrollVelocity = Math.abs(mScrollOffsetYTo - mScrollOffsetYFrom) / SCROLL_TIME;
+        mScrollVelocity = Math.abs(mScrollOffsetYTo - mScrollOffsetYFrom) / mScrollTimeMax;
         updateState(State.SCROLLING);
         performScroll();
+    }
+
+    private void addLines(List<Line> lines) {
+        mLines.clear();
+        if (lines == null || lines.isEmpty()) {
+            return;
+        }
+        for (int i = 0, size = lines.size(); i < size; i++) {
+            Line line = lines.get(i);
+            String content = line.getContent();
+            float lineWidth = mHighlightTextPaint.measureText(content);
+            if (lineWidth <= mWidth) {
+                mLines.add(line);
+                continue;
+            }
+            mLines.addAll(splitTooLongLineToLines(line, mHighlightTextPaint, mWidth));
+        }
+    }
+
+    private List<Line> splitTooLongLineToLines(Line line, Paint paint, int limit) {
+        List<Line> lines = new ArrayList<>();
+
+        String content = line.getContent();
+        long startMills = line.getStartMills();
+        long endMills = line.getEndMills();
+
+        while (paint.measureText(content) > limit) {
+            int len = getLen(content, paint, limit);
+            String newLineContent = content.substring(0, len);
+            long end = (endMills - startMills) * newLineContent.length() / content.length() + startMills;
+            Line newLine = new Line(startMills, end, newLineContent);
+            lines.add(newLine);
+
+            content = content.substring(len);
+            startMills = end + 1;
+        }
+
+        lines.add(new Line(startMills, endMills, content));
+
+        return lines;
+    }
+
+    private int getLen(String content, Paint paint, int limit) {
+        int start = 1;
+        int end = content.length();
+        while (true) {
+            int target = (start + end) >> 1;
+            float len1 = paint.measureText(content.substring(0, target));
+            float len2 = paint.measureText(content.substring(0, target + 1));
+            if (len1 > limit) {
+                end = target - 1;
+            } else if (len2 <= limit) {
+                start = target + 1;
+            } else {
+                return target;
+            }
+        }
+    }
+
+    private void reset() {
+        updateState(State.IDLE);
+
+        mFlingMinOffsetY = mHalfHeight - computeOffsetYByIndex(mLines.size() - 1, 0);
+        mFlingMaxOffsetY = mHalfHeight;
+
+        mTouchMinOffsetY = mHalfHeight - computeOffsetYByIndex(mLines.size() + 3, 0);
+        mTouchMaxOffsetY = mHalfHeight + computeOffsetYByIndex(3, 0);
+
+        mCurrentOffsetY = mHalfHeight;
     }
 
     @SuppressWarnings("WeakerAccess")
@@ -832,6 +938,7 @@ public class LyricView extends View {
             return this;
         }
 
+        @SuppressWarnings("NullableProblems")
         @Override
         public String toString() {
             return "\"Line\": {"
@@ -868,17 +975,28 @@ public class LyricView extends View {
 
     private static class SavedState extends BaseSavedState {
 
-        private List<Line> mLines;
-        private long mCurrentTimeMills;
-        private float mLineSpacing;
-        private boolean misKaraokeEnable;
-        private int mKaraokeColor;
-        private int mHighlightColor;
         private int mTextColor;
         private float mTextSize;
-        private float mHighlightTextSize;
-        private float mFlingAccelerate;
 
+        private int mHighlightTextColor;
+        private float mHighlightTextSize;
+
+        private boolean mKaraokeEnable;
+        private int mKaraokeTextColor;
+
+        private float mFlingAccelerate;
+        private int mFlingTimeInterval;
+
+        private float mLineSpacing;
+
+        private int mScrollTimeInterval;
+        private int mScrollTimeMax;
+
+        private boolean mAutoScrollBack;
+        private int mStopTime;
+
+        private List<Line> mLines;
+        private long mCurrentTimeMills;
 
         SavedState(Parcelable superState) {
             super(superState);
@@ -886,16 +1004,21 @@ public class LyricView extends View {
 
         SavedState(Parcel in) {
             super(in);
-            this.mLines = in.createTypedArrayList(Line.CREATOR);
-            this.mCurrentTimeMills = in.readLong();
-            this.mLineSpacing = in.readFloat();
-            this.misKaraokeEnable = in.readByte() != 0;
-            this.mKaraokeColor = in.readInt();
-            this.mHighlightColor = in.readInt();
             this.mTextColor = in.readInt();
             this.mTextSize = in.readFloat();
+            this.mHighlightTextColor = in.readInt();
             this.mHighlightTextSize = in.readFloat();
+            this.mKaraokeEnable = in.readByte() != 0;
+            this.mKaraokeTextColor = in.readInt();
             this.mFlingAccelerate = in.readFloat();
+            this.mFlingTimeInterval = in.readInt();
+            this.mLineSpacing = in.readFloat();
+            this.mScrollTimeInterval = in.readInt();
+            this.mScrollTimeMax = in.readInt();
+            this.mAutoScrollBack = in.readByte() != 0;
+            this.mStopTime = in.readInt();
+            this.mLines = in.createTypedArrayList(Line.CREATOR);
+            this.mCurrentTimeMills = in.readLong();
         }
 
         @Override
@@ -905,16 +1028,21 @@ public class LyricView extends View {
 
         @Override
         public void writeToParcel(Parcel dest, int flags) {
-            dest.writeTypedList(this.mLines);
-            dest.writeLong(this.mCurrentTimeMills);
-            dest.writeFloat(this.mLineSpacing);
-            dest.writeByte(this.misKaraokeEnable ? (byte) 1 : (byte) 0);
-            dest.writeInt(this.mKaraokeColor);
-            dest.writeInt(this.mHighlightColor);
             dest.writeInt(this.mTextColor);
             dest.writeFloat(this.mTextSize);
+            dest.writeInt(this.mHighlightTextColor);
             dest.writeFloat(this.mHighlightTextSize);
+            dest.writeByte(this.mKaraokeEnable ? (byte) 1 : (byte) 0);
+            dest.writeInt(this.mKaraokeTextColor);
             dest.writeFloat(this.mFlingAccelerate);
+            dest.writeInt(this.mFlingTimeInterval);
+            dest.writeFloat(this.mLineSpacing);
+            dest.writeInt(this.mScrollTimeInterval);
+            dest.writeInt(this.mScrollTimeMax);
+            dest.writeByte(this.mAutoScrollBack ? (byte) 1 : (byte) 0);
+            dest.writeInt(this.mStopTime);
+            dest.writeTypedList(this.mLines);
+            dest.writeLong(this.mCurrentTimeMills);
         }
 
         public static final Parcelable.Creator<SavedState> CREATOR = new Parcelable.Creator<SavedState>() {
@@ -928,6 +1056,7 @@ public class LyricView extends View {
                 return new SavedState[size];
             }
         };
+
     }
 
     private static class InternalHandler extends Handler {

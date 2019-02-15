@@ -24,8 +24,8 @@ public class Player {
 
     public Player() {
         mCounter = new HandlerCounter()
-                .countInterval(1000)
-                .stepSize(1000)
+                .countInterval(200)
+                .stepSize(200)
                 .countListener(new CountListener() {
                     @Override
                     public void onCount(long l) {
