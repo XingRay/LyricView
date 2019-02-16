@@ -185,6 +185,7 @@ public class LyricView extends View {
 
         mKaraokeZoomInPaint.setColor(mKaraokeTextColor);
         mZoomInPaint.setColor(mHighlightTextColor);
+        mZoomOutPaint.setColor(mTextColor);
 
         mHandler = new InternalHandler();
     }
@@ -212,7 +213,7 @@ public class LyricView extends View {
         }
         mTextColor = color;
         mTextPaint.setColor(mTextColor);
-
+        mZoomOutPaint.setColor(mTextColor);
         invalidate();
     }
 
