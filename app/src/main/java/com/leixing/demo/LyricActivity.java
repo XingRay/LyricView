@@ -190,6 +190,9 @@ public class LyricActivity extends Activity {
             public void run() {
                 try {
                     String[] filenames = getAssets().list("lyric");
+                    if (filenames == null) {
+                        return;
+                    }
                     for (String filename : filenames) {
                         Lyric lyric = LyricUtil.parseLyric(getAssets().open("lyric" + File.separator + filename));
                         mLyrics.add(lyric);

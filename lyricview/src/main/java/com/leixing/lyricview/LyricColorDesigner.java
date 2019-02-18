@@ -1,7 +1,5 @@
 package com.leixing.lyricview;
 
-import android.util.Log;
-
 /**
  * description : xxx
  *
@@ -12,9 +10,6 @@ import android.util.Log;
 public class LyricColorDesigner implements ColorDesigner {
     private static final String TAG = LyricColorDesigner.class.getSimpleName();
 
-    private final float mHighlightTextHeight;
-    private final float mTextHeight;
-    private final float mSpacing;
     private final int mHighlightColor;
     private final int mTextStartColor;
     private final int mTextEndColor;
@@ -22,14 +17,11 @@ public class LyricColorDesigner implements ColorDesigner {
 
     public LyricColorDesigner(float highlightTextHeight, float textHeight, float spacing,
                               int highlightColor, int textStartColor, int textEndColor) {
-        mHighlightTextHeight = highlightTextHeight;
-        mTextHeight = textHeight;
-        mSpacing = spacing;
         mHighlightColor = highlightColor;
         mTextStartColor = textStartColor;
         mTextEndColor = textEndColor;
 
-        mFirstLineDistance = mSpacing + (mTextHeight + mHighlightTextHeight) / 2;
+        mFirstLineDistance = spacing + (textHeight + highlightTextHeight) / 2;
     }
 
     @Override
@@ -42,8 +34,7 @@ public class LyricColorDesigner implements ColorDesigner {
             float fraction = absOffsetY / mFirstLineDistance;
             return evaluateInt(mHighlightColor, mTextStartColor, fraction);
         } else if (height > mFirstLineDistance) {
-            float fraction = (absOffsetY - mFirstLineDistance) / (height / 2 - mFirstLineDistance);
-            Log.i(TAG, "fraction:" + fraction);
+            float fraction = (absOffsetY - mFirstLineDistance) / ((height >> 1) - mFirstLineDistance);
             return evaluateInt(mTextStartColor, mTextEndColor, fraction);
         } else {
             return mTextEndColor;
