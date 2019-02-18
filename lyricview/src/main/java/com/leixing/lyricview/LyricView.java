@@ -119,7 +119,7 @@ public class LyricView extends View {
      */
     private float mFlingVelocity;
     private int mLastLineIndex = -1;
-    private int mCurrentLineIndex = -1;
+    private int mCurrentLineIndex;
     private float mScrollVelocity;
     private float mHighlightTextHeight;
     private long mUpdateTimeMills;
@@ -192,6 +192,7 @@ public class LyricView extends View {
 
         if (mWidth > 0) {
             addLines(mRawLines);
+            updateLinesVariables();
             invalidate();
         }
     }
@@ -476,9 +477,20 @@ public class LyricView extends View {
         mWidth = w;
         mHeight = h;
         mHalfHeight = h >> 1;
-        mCurrentOffsetY = mHalfHeight - computeOffsetYByTimeMills(mCurrentTimeMills);
 
         addLines(mRawLines);
+
+        updateLinesVariables();
+    }
+
+    private void updateLinesVariables() {
+        mCurrentOffsetY = mHalfHeight - computeOffsetYByTimeMills(mCurrentTimeMills);
+
+        mFlingMinOffsetY = mHalfHeight - computeOffsetYByIndex(mLines.size() - 1, 0);
+        mFlingMaxOffsetY = mHalfHeight;
+
+        mTouchMinOffsetY = mHalfHeight - computeOffsetYByIndex(mLines.size() + 3, 0);
+        mTouchMaxOffsetY = mHalfHeight + computeOffsetYByIndex(3, 0);
     }
 
     @Nullable
@@ -587,16 +599,20 @@ public class LyricView extends View {
     private void drawKaraoke(Canvas canvas, Paint karaokePaint, Paint textPaint, float x,
                              float baseLine, String content, long startMills, long endMills) {
         float textWidth = karaokePaint.measureText(content);
+        int playedWidth;
 
-        if (endMills - startMills == 0) {
-            return;
+        if (endMills == startMills) {
+            playedWidth = mCurrentTimeMills < startMills ? 0 : (int) textWidth;
+        } else {
+            playedWidth = (int) (textWidth * (mCurrentTimeMills - startMills) / (endMills - startMills));
         }
-        int playedWidth = (int) (textWidth * (mCurrentTimeMills - startMills) / (endMills - startMills));
+
         if (playedWidth > textWidth) {
             playedWidth = (int) textWidth;
         }
-        if (playedWidth <= 0) {
-            return;
+
+        if (playedWidth < 0) {
+            playedWidth = 0;
         }
 
         // 绘制已经播放的部分
@@ -650,7 +666,7 @@ public class LyricView extends View {
     }
 
     private void performScroll() {
-        if (mState != State.SCROLLING_WITH_SCALE && mState != State.SCROLLING && mState != State.IDLE) {
+        if (mState != State.SCROLLING_WITH_SCALE && mState != State.SCROLLING) {
             return;
         }
 
@@ -678,12 +694,14 @@ public class LyricView extends View {
             updateState(State.IDLE);
             return;
         }
-        postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                performScroll();
-            }
-        }, mScrollTimeInterval);
+
+        sendScrollMessage(mScrollTimeInterval);
+    }
+
+    private void sendScrollMessage(int delayMills) {
+        Message message = mHandler.obtainMessage(InternalHandler.SCROLL);
+        message.obj = new WeakReference<>(this);
+        mHandler.sendMessageDelayed(message, delayMills);
     }
 
     private boolean hasScaleAnimation() {
@@ -781,6 +799,7 @@ public class LyricView extends View {
 
     private void updateState(State state) {
         mState = state;
+        Log.i(TAG, "updateState state:" + state);
 
         switch (mState) {
             case IDLE:
@@ -879,11 +898,12 @@ public class LyricView extends View {
     private void reset() {
         updateState(State.IDLE);
 
-        mFlingMinOffsetY = mHalfHeight - computeOffsetYByIndex(mLines.size() - 1, 0);
-        mFlingMaxOffsetY = mHalfHeight;
+        mCurrentLineIndex = 0;
+        mUpdateTimeMills = 0;
+        mCurrentTimeMills = 0;
 
-        mTouchMinOffsetY = mHalfHeight - computeOffsetYByIndex(mLines.size() + 3, 0);
-        mTouchMaxOffsetY = mHalfHeight + computeOffsetYByIndex(3, 0);
+        mHandler.removeMessages(InternalHandler.SCROLL);
+        mHandler.removeMessages(InternalHandler.STOP_OVER);
 
         mCurrentOffsetY = mHalfHeight;
     }
@@ -1056,6 +1076,7 @@ public class LyricView extends View {
 
     private static class InternalHandler extends Handler {
         private static final int STOP_OVER = 100;
+        private static final int SCROLL = 101;
 
         @Override
         public void handleMessage(Message msg) {
@@ -1070,6 +1091,18 @@ public class LyricView extends View {
                         }
                     }
                     break;
+
+                case SCROLL:
+                    if (msg.obj instanceof WeakReference) {
+                        WeakReference reference = (WeakReference) msg.obj;
+                        Object o = reference.get();
+                        if (o instanceof LyricView) {
+                            LyricView view = (LyricView) o;
+                            view.performScroll();
+                        }
+                    }
+                    break;
+
                 default:
             }
         }

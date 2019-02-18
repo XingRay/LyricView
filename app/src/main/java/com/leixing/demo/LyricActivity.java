@@ -181,7 +181,8 @@ public class LyricActivity extends Activity {
     }
 
     private void playPrevious() {
-        playPosition((mPosition - 1) % mLyrics.size());
+        int size = mLyrics.size();
+        playPosition((mPosition + size - 1) % size);
     }
 
     private void loadData() {
