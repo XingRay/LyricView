@@ -12,7 +12,6 @@ import android.os.Parcel;
 import android.os.Parcelable;
 import android.support.annotation.Nullable;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
@@ -86,6 +85,7 @@ public class LyricView extends View {
     // saved state
 
     private List<Line> mLines = new ArrayList<>();
+    private List<Line> mRawLines;
     private long mCurrentTimeMills = 0;
 
     // temp values
@@ -133,7 +133,6 @@ public class LyricView extends View {
 
     private TouchListener mTouchListener;
     private ColorDesigner mColorDesigner;
-    private List<Line> mRawLines;
 
 
     public LyricView(Context context) {
@@ -297,7 +296,7 @@ public class LyricView extends View {
                 mUpdateTimeMills = mills;
                 return;
 
-            case STOP:
+            case STAY:
             case TOUCHING:
             case FLINGING:
             case SCROLLING:
@@ -318,9 +317,6 @@ public class LyricView extends View {
             mCurrentLineIndex = index;
         }
         mCurrentOffsetY = mHalfHeight - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
-        Log.i(TAG, "updateTimeMills"
-                + "\nmCurrentOffsetY:" + mCurrentOffsetY
-                + "");
         invalidate();
     }
 
@@ -338,15 +334,7 @@ public class LyricView extends View {
     }
 
     @Override
-    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        // TODO: 2018/11/21
-    }
-
-    @Override
     protected void onDraw(Canvas canvas) {
-        super.onDraw(canvas);
-
         for (int i = 0, size = mLines.size(); i < size; i++) {
             boolean isHighlight = i == mCurrentLineIndex;
             float textHeight = isHighlight ? mHighlightTextHeight : mTextHeight;
@@ -432,9 +420,7 @@ public class LyricView extends View {
                 float y = event.getY();
                 float deltaY = y - mTouchStartY;
                 mTouchStartY = y;
-
                 mCurrentOffsetY = limit(mCurrentOffsetY + deltaY, mTouchMinOffsetY, mTouchMaxOffsetY);
-
                 invalidate();
                 if (mTouchListener != null) {
                     long timeMills = getTimeMillsByOffsetY(mCurrentOffsetY);
@@ -453,7 +439,7 @@ public class LyricView extends View {
                     mFlingVelocity = 0;
                     mVelocityTracker.recycle();
                     mVelocityTracker = null;
-                    updateState(State.STOP);
+                    updateState(State.STAY);
                 }
                 if (mTouchListener != null) {
                     long timeMills = getTimeMillsByOffsetY(mCurrentOffsetY);
@@ -471,15 +457,11 @@ public class LyricView extends View {
 
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
-        super.onSizeChanged(w, h, oldw, oldh);
-        Log.i(TAG, "w:" + w + " h:" + h + " oldw:" + oldw + " oldh:" + oldh);
-
         mWidth = w;
         mHeight = h;
         mHalfHeight = h >> 1;
 
         addLines(mRawLines);
-
         updateLinesVariables();
     }
 
@@ -496,8 +478,6 @@ public class LyricView extends View {
     @Nullable
     @Override
     protected Parcelable onSaveInstanceState() {
-        Log.i(TAG, "onSaveInstanceState");
-
         SavedState savedState = new SavedState(super.onSaveInstanceState());
         savedState.mRawLines = mRawLines;
         savedState.mCurrentTimeMills = mCurrentTimeMills;
@@ -544,33 +524,39 @@ public class LyricView extends View {
 
         mTextColor = typedArray.getColor(R.styleable.LyricView_lyric_view_text_color,
                 TEXT_COLOR_DEFAULT);
+
         mTextSize = typedArray.getDimension(R.styleable.LyricView_lyric_view_text_size,
                 TEXT_SIZE_DEFAULT);
 
         mHighlightTextColor = typedArray.getColor(R.styleable.LyricView_lyric_view_highlight_text_color,
                 HIGHLIGHT_TEXT_COLOR_DEFAULT);
+
         mHighlightTextSize = typedArray.getDimension(R.styleable.LyricView_lyric_view_highlight_text_size,
                 HIGHLIGHT_TEXT_SIZE_DEFAULT);
 
         mKaraokeEnable = typedArray.getBoolean(R.styleable.LyricView_lyric_view_karaoke_enable,
                 KARAOKE_ENABLE_DEFAULT);
+
         mKaraokeTextColor = typedArray.getColor(R.styleable.LyricView_lyric_view_karaoke_color,
                 KARAOKE_TEXT_COLOR_DEFAULT);
 
         mLineSpacing = typedArray.getDimension(R.styleable.LyricView_lyric_view_line_spacing,
                 LINE_SPACING_DEFAULT);
 
-        mFlingAccelerate = typedArray.getDimension(R.styleable.LyricView_lyric_view_fling_accelerate,
+        mFlingAccelerate = typedArray.getFloat(R.styleable.LyricView_lyric_view_fling_accelerate,
                 FLING_ACCELERATE_DEFAULT);
+
         mFlingTimeInterval = typedArray.getInt(R.styleable.LyricView_lyric_view_fling_time_interval,
                 FLING_TIME_INTERVAL_DEFAULT);
 
         mScrollTimeInterval = typedArray.getInt(R.styleable.LyricView_lyric_view_scroll_time_interval,
                 SCROLL_TIME_INTERVAL_DEFAULT);
+
         mScrollTimeMax = typedArray.getInt(R.styleable.LyricView_lyric_view_scroll_time_max,
                 SCROLL_TIME_MAX_DEFAULT);
 
         mStopTime = typedArray.getInt(R.styleable.LyricView_lyric_view_stop_time, STOP_TIME_DEFAULT);
+
         mAutoScrollBack = typedArray.getBoolean(R.styleable.LyricView_lyric_view_auto_scroll_back,
                 AUTO_SCROLL_BACK_DEFAULT);
 
@@ -695,13 +681,7 @@ public class LyricView extends View {
             return;
         }
 
-        sendScrollMessage(mScrollTimeInterval);
-    }
-
-    private void sendScrollMessage(int delayMills) {
-        Message message = mHandler.obtainMessage(InternalHandler.SCROLL);
-        message.obj = new WeakReference<>(this);
-        mHandler.sendMessageDelayed(message, delayMills);
+        sendMessage(InternalHandler.SCROLL, mScrollTimeInterval);
     }
 
     private boolean hasScaleAnimation() {
@@ -740,15 +720,16 @@ public class LyricView extends View {
     }
 
     private void performFling() {
-        if (mFlingVelocity == 0) {
-            updateState(State.STOP);
-            Log.i(TAG, "performFling stop");
-            mFlingTimeMills = 0;
-            return;
-        }
         if (mState != State.FLINGING) {
             return;
         }
+
+        if (mFlingVelocity == 0) {
+            updateState(State.STAY);
+            mFlingTimeMills = 0;
+            return;
+        }
+
         if (mFlingTimeMills == 0) {
             mFlingTimeMills = System.currentTimeMillis();
         } else {
@@ -762,7 +743,7 @@ public class LyricView extends View {
                 velocity = Math.min(0, mFlingVelocity + accelerate * timeMills);
             }
 
-            // s = vt+0.5*at^2
+            // s = vt+0.5*a*t^2
             float distance = (velocity * velocity - mFlingVelocity * mFlingVelocity) / (2 * accelerate);
 
             mCurrentOffsetY += distance;
@@ -777,13 +758,9 @@ public class LyricView extends View {
             }
         }
 
-        postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                performFling();
-                invalidate();
-            }
-        }, mFlingTimeInterval);
+        invalidate();
+
+        sendMessage(InternalHandler.FLING, mFlingTimeInterval);
     }
 
     private static float calcInterValue(float from, float to, float ratio) {
@@ -799,8 +776,6 @@ public class LyricView extends View {
 
     private void updateState(State state) {
         mState = state;
-        Log.i(TAG, "updateState state:" + state);
-
         switch (mState) {
             case IDLE:
                 if (mUpdateTimeMills != 0) {
@@ -809,21 +784,23 @@ public class LyricView extends View {
                 }
                 break;
 
-            case STOP:
+            case STAY:
                 mHandler.removeMessages(InternalHandler.STOP_OVER);
-                mHandler.sendEmptyMessageDelayed(InternalHandler.STOP_OVER, mStopTime);
-                Message message = Message.obtain();
-                message.what = InternalHandler.STOP_OVER;
-                message.obj = new WeakReference<>(this);
-                mHandler.sendMessageDelayed(message, mStopTime);
+                sendMessage(InternalHandler.STOP_OVER, mStopTime);
                 break;
 
             default:
         }
     }
 
+    private void sendMessage(int what, int delayMills) {
+        Message message = mHandler.obtainMessage(what);
+        message.obj = new WeakReference<>(this);
+        mHandler.sendMessageDelayed(message, delayMills);
+    }
+
     private void onStopOver() {
-        if (mState != State.STOP) {
+        if (mState != State.STAY) {
             return;
         }
         float offsetY = mHalfHeight - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
@@ -896,16 +873,23 @@ public class LyricView extends View {
     }
 
     private void reset() {
-        updateState(State.IDLE);
-
-        mCurrentLineIndex = 0;
-        mUpdateTimeMills = 0;
+        mState = State.IDLE;
         mCurrentTimeMills = 0;
+        mCurrentOffsetY = 0;
+        mFlingVelocity = 0;
+        mLastLineIndex = -1;
+        mCurrentLineIndex = 0;
+        mScrollVelocity = 0;
+        mUpdateTimeMills = 0;
+        mFlingTimeMills = 0;
+        mFlingMinOffsetY = 0;
+        mFlingMaxOffsetY = 0;
+        mTouchMinOffsetY = 0;
+        mTouchMaxOffsetY = 0;
 
-        mHandler.removeMessages(InternalHandler.SCROLL);
         mHandler.removeMessages(InternalHandler.STOP_OVER);
-
-        mCurrentOffsetY = mHalfHeight;
+        mHandler.removeMessages(InternalHandler.SCROLL);
+        mHandler.removeMessages(InternalHandler.FLING);
     }
 
     @SuppressWarnings("WeakerAccess")
@@ -1077,34 +1061,49 @@ public class LyricView extends View {
     private static class InternalHandler extends Handler {
         private static final int STOP_OVER = 100;
         private static final int SCROLL = 101;
+        private static final int FLING = 102;
 
         @Override
         public void handleMessage(Message msg) {
+            LyricView view;
             switch (msg.what) {
                 case STOP_OVER:
-                    if (msg.obj instanceof WeakReference) {
-                        WeakReference reference = (WeakReference) msg.obj;
-                        Object o = reference.get();
-                        if (o instanceof LyricView) {
-                            LyricView view = (LyricView) o;
-                            view.onStopOver();
-                        }
+                    view = getLyricView(msg);
+                    if (view != null) {
+                        view.onStopOver();
                     }
                     break;
 
                 case SCROLL:
-                    if (msg.obj instanceof WeakReference) {
-                        WeakReference reference = (WeakReference) msg.obj;
-                        Object o = reference.get();
-                        if (o instanceof LyricView) {
-                            LyricView view = (LyricView) o;
-                            view.performScroll();
-                        }
+                    view = getLyricView(msg);
+                    if (view != null) {
+                        view.performScroll();
+                    }
+                    break;
+
+                case FLING:
+                    view = getLyricView(msg);
+                    if (view != null) {
+                        view.performFling();
                     }
                     break;
 
                 default:
             }
+        }
+
+        private LyricView getLyricView(Message msg) {
+            if (!(msg.obj instanceof WeakReference)) {
+                return null;
+            }
+
+            WeakReference reference = (WeakReference) msg.obj;
+            Object o = reference.get();
+            if (!(o instanceof LyricView)) {
+                return null;
+            }
+
+            return (LyricView) o;
         }
     }
 
@@ -1158,8 +1157,8 @@ public class LyricView extends View {
         FLINGING,
 
         /**
-         * 停留状态
+         * 停留状态，用户滑动控件后的一段时间内，控件进入此状态，保持控件的偏移位置不变
          */
-        STOP,
+        STAY,
     }
 }
