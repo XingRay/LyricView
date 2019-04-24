@@ -1,22 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <declare-styleable name="LyricView">
-        <attr name="lyric_view_text_color" format="color|reference"/>
-        <attr name="lyric_view_text_size" format="dimension|reference"/>
+        <attr name="lyric_view_text_color" format="color|reference" />
+        <attr name="lyric_view_text_size" format="dimension|reference" />
 
-        <attr name="lyric_view_highlight_text_color" format="color|reference"/>
-        <attr name="lyric_view_highlight_text_size" format="dimension|reference"/>
+        <attr name="lyric_view_highlight_text_color" format="color|reference" />
+        <attr name="lyric_view_highlight_text_size" format="dimension|reference" />
 
-        <attr name="lyric_view_karaoke_enable" format="boolean"/>
-        <attr name="lyric_view_karaoke_color" format="color|reference"/>
+        <attr name="lyric_view_karaoke_enable" format="boolean" />
+        <attr name="lyric_view_karaoke_color" format="color|reference" />
 
-        <attr name="lyric_view_line_spacing" format="dimension|reference"/>
-        <attr name="lyric_view_fling_accelerate" format="float"/>
+        <attr name="lyric_view_line_spacing" format="dimension|reference" />
+        <attr name="lyric_view_fling_accelerate" format="float" />
 
-        <attr name="lyric_view_scroll_time_interval" format="integer|reference"/>
-        <attr name="lyric_view_fling_time_interval" format="integer|reference"/>
-        <attr name="lyric_view_scroll_time_max" format="integer|reference"/>
-        <attr name="lyric_view_stop_time" format="integer|reference"/>
-        <attr name="lyric_view_auto_scroll_back" format="boolean"/>
+        <attr name="lyric_view_scroll_time_interval" format="integer|reference" />
+        <attr name="lyric_view_fling_time_interval" format="integer|reference" />
+        <attr name="lyric_view_scroll_time_max" format="integer|reference" />
+        <attr name="lyric_view_stop_time" format="integer|reference" />
+        <attr name="lyric_view_auto_scroll_back" format="boolean" />
+
+        <attr name="lyric_view_highlight_gravity">
+            <enum name="center" value="0" />
+            <enum name="top" value="1" />
+            <enum name="bottom" value="2" />
+        </attr>
+
+        <attr name="lyric_view_highlight_margin_top" format="dimension|reference" />
+
     </declare-styleable>
 </resources>

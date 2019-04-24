@@ -131,7 +131,10 @@ public class LyricActivity extends Activity {
             }
         });
 
-        lvLyric.setColorDesigner(new LyricColorDesigner(80.0f, 60.0f, 10.0f,
+        lvLyric.setColorDesigner(new LyricColorDesigner(
+                lvLyric.getHighlightTextHeight(),
+                lvLyric.getTextHeight(),
+                lvLyric.getLineSpacing(),
                 0xffff00ff, 0xffff0000, 0xff00ff00));
 
         sbSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {

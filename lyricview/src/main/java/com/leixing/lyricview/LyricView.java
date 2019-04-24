@@ -56,6 +56,12 @@ public class LyricView extends View {
     private static final int STOP_TIME_DEFAULT = 2000;
     private static final boolean AUTO_SCROLL_BACK_DEFAULT = true;
 
+    private static final int HIGHLIGHT_MARGIN_TOP_DEFAULT = 0;
+
+    private static final int HIGHLIGHT_LINE_GRAVITY_CENTER = 0;
+    private static final int HIGHLIGHT_LINE_GRAVITY_TOP = 1;
+    private static final int HIGHLIGHT_LINE_GRAVITY_BOTTOM = 2;
+
 
     // attributes
 
@@ -97,7 +103,7 @@ public class LyricView extends View {
     private InternalHandler mHandler;
     private int mWidth;
     private int mHeight;
-    private int mHalfHeight;
+    private int mHighlightOffset;
     private float mTouchStartY;
     private float mScrollOffsetYTo;
     private float mScrollOffsetYFrom;
@@ -129,10 +135,13 @@ public class LyricView extends View {
     private float mTouchMinOffsetY;
     private float mTouchMaxOffsetY;
 
+    private int mHighlightLineGravity;
+
     // listeners
 
     private TouchListener mTouchListener;
     private ColorDesigner mColorDesigner;
+    private float mHighlightMarginTop;
 
 
     public LyricView(Context context) {
@@ -273,7 +282,7 @@ public class LyricView extends View {
             mCurrentLineIndex = index;
         }
         // 第0行到控件顶部的距离
-        float offsetY = mHalfHeight - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
+        float offsetY = mHighlightOffset - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
 
         switch (mState) {
             case IDLE:
@@ -316,7 +325,7 @@ public class LyricView extends View {
             mLastLineIndex = mCurrentLineIndex;
             mCurrentLineIndex = index;
         }
-        mCurrentOffsetY = mHalfHeight - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
+        mCurrentOffsetY = mHighlightOffset - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
         invalidate();
     }
 
@@ -343,7 +352,6 @@ public class LyricView extends View {
             float top = offsetY - textHeight / 2;
             float baseLine = top - ascent;
             float bottom = offsetY + textHeight / 2;
-            float offsetYFromCenter = offsetY - mHalfHeight;
 
             if (top > mHeight || bottom < 0) {
                 // out of bounds
@@ -359,14 +367,14 @@ public class LyricView extends View {
                 if (i == mLastLineIndex) {
                     float x = ((int) (mWidth - mZoomOutPaint.measureText(content))) >> 1;
                     if (mColorDesigner != null) {
-                        mZoomOutPaint.setColor(mColorDesigner.getColor(offsetYFromCenter, mHeight));
+                        mZoomOutPaint.setColor(mColorDesigner.getColor(offsetY, mHighlightOffset, mHeight));
                     }
                     canvas.drawText(content, x, baseLine, mZoomOutPaint);
                     continue;
                 } else if (i == mCurrentLineIndex) {
                     float x = ((int) (mWidth - mZoomInPaint.measureText(content))) >> 1;
                     if (mColorDesigner != null) {
-                        mZoomInPaint.setColor(mColorDesigner.getColor(offsetYFromCenter, mHeight));
+                        mZoomInPaint.setColor(mColorDesigner.getColor(offsetY, mHighlightOffset, mHeight));
                     }
 
                     if (mKaraokeEnable) {
@@ -380,7 +388,7 @@ public class LyricView extends View {
             if (isHighlight) {
                 float x = ((int) (mWidth - mHighlightTextPaint.measureText(content))) >> 1;
                 if (mColorDesigner != null) {
-                    mHighlightTextPaint.setColor(mColorDesigner.getColor(offsetYFromCenter, mHeight));
+                    mHighlightTextPaint.setColor(mColorDesigner.getColor(offsetY, mHighlightOffset, mHeight));
                 }
                 if (mKaraokeEnable) {
                     drawKaraoke(canvas, mKaraokePaint, mHighlightTextPaint, x, baseLine, content, startMills, endMills);
@@ -390,7 +398,7 @@ public class LyricView extends View {
             } else {
                 float x = ((int) (mWidth - mTextPaint.measureText(content))) >> 1;
                 if (mColorDesigner != null) {
-                    mTextPaint.setColor(mColorDesigner.getColor(offsetYFromCenter, mHeight));
+                    mTextPaint.setColor(mColorDesigner.getColor(offsetY, mHighlightOffset, mHeight));
                 }
                 canvas.drawText(content, x, baseLine, mTextPaint);
             }
@@ -459,20 +467,40 @@ public class LyricView extends View {
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         mWidth = w;
         mHeight = h;
-        mHalfHeight = h >> 1;
+
+        mHighlightOffset = getHighlightOffset(h);
 
         addLines(mRawLines);
         updateLinesVariables();
     }
 
+    protected int getHighlightOffset(int h) {
+        int offset;
+        switch (mHighlightLineGravity) {
+            case HIGHLIGHT_LINE_GRAVITY_TOP:
+                offset = (int) (mHighlightTextHeight * 0.5);
+                break;
+            case HIGHLIGHT_LINE_GRAVITY_BOTTOM:
+                offset = mHighlightOffset = h - (int) (mHighlightTextHeight * 0.5);
+                break;
+
+            case HIGHLIGHT_LINE_GRAVITY_CENTER:
+            default:
+                offset = mHighlightOffset = h >> 1;
+        }
+
+        offset += mHighlightMarginTop;
+        return offset;
+    }
+
     private void updateLinesVariables() {
-        mCurrentOffsetY = mHalfHeight - computeOffsetYByTimeMills(mCurrentTimeMills);
+        mCurrentOffsetY = mHighlightOffset - computeOffsetYByTimeMills(mCurrentTimeMills);
 
-        mFlingMinOffsetY = mHalfHeight - computeOffsetYByIndex(mLines.size() - 1, 0);
-        mFlingMaxOffsetY = mHalfHeight;
+        mFlingMinOffsetY = mHighlightOffset - computeOffsetYByIndex(mLines.size() - 1, 0);
+        mFlingMaxOffsetY = mHighlightOffset;
 
-        mTouchMinOffsetY = mHalfHeight - computeOffsetYByIndex(mLines.size() + 3, 0);
-        mTouchMaxOffsetY = mHalfHeight + computeOffsetYByIndex(3, 0);
+        mTouchMinOffsetY = mHighlightOffset - computeOffsetYByIndex(mLines.size() + 3, 0);
+        mTouchMaxOffsetY = mHighlightOffset + computeOffsetYByIndex(3, 0);
     }
 
     @Nullable
@@ -560,13 +588,23 @@ public class LyricView extends View {
         mAutoScrollBack = typedArray.getBoolean(R.styleable.LyricView_lyric_view_auto_scroll_back,
                 AUTO_SCROLL_BACK_DEFAULT);
 
+        String gravityString = typedArray.getString(R.styleable.LyricView_lyric_view_highlight_gravity);
+        if (gravityString != null) {
+            mHighlightLineGravity = Integer.parseInt(gravityString);
+        } else {
+            mHighlightLineGravity = HIGHLIGHT_LINE_GRAVITY_CENTER;
+        }
+
+        mHighlightMarginTop = typedArray.getDimension(R.styleable.LyricView_lyric_view_highlight_margin_top,
+                HIGHLIGHT_MARGIN_TOP_DEFAULT);
+
         typedArray.recycle();
     }
 
     private void scrollToLine(int index, boolean smooth) {
         Line line = mLines.get(index);
         mCurrentTimeMills = line.startMills;
-        float offsetY = mHalfHeight - computeOffsetYByIndex(index, index);
+        float offsetY = mHighlightOffset - computeOffsetYByIndex(index, index);
         if (mCurrentOffsetY == offsetY) {
             return;
         }
@@ -689,7 +727,7 @@ public class LyricView extends View {
     }
 
     private long getTimeMillsByOffsetY(float offsetY) {
-        int index = (int) ((mHalfHeight - offsetY) / (mTextHeight + mLineSpacing) + 0.5f);
+        int index = (int) ((mHighlightOffset - offsetY) / (mTextHeight + mLineSpacing) + 0.5f);
         if (index < 0) {
             index = 0;
         } else if (index >= mLines.size()) {
@@ -803,7 +841,7 @@ public class LyricView extends View {
         if (mState != State.STAY) {
             return;
         }
-        float offsetY = mHalfHeight - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
+        float offsetY = mHighlightOffset - computeOffsetYByIndex(mCurrentLineIndex, mCurrentLineIndex);
         if (mCurrentOffsetY == offsetY || !mAutoScrollBack) {
             updateState(State.IDLE);
             return;
@@ -890,6 +928,18 @@ public class LyricView extends View {
         mHandler.removeMessages(InternalHandler.STOP_OVER);
         mHandler.removeMessages(InternalHandler.SCROLL);
         mHandler.removeMessages(InternalHandler.FLING);
+    }
+
+    public float getHighlightTextHeight() {
+        return mHighlightTextHeight;
+    }
+
+    public float getTextHeight() {
+        return mTextHeight;
+    }
+
+    public float getLineSpacing() {
+        return mLineSpacing;
     }
 
     @SuppressWarnings("WeakerAccess")
