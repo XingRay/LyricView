@@ -6,6 +6,7 @@ import android.text.TextUtils;
 import com.leixing.lyricview.LyricView;
 
 import java.io.BufferedReader;
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -62,7 +63,7 @@ public class LyricUtil {
     /**
      * 从字符串中获得时间值
      */
-    public static long getStartTimeMillis(String str) {
+    private static long getStartTimeMillis(String str) {
         long minute;
         long second = 0;
         long millis = 0;
@@ -90,6 +91,7 @@ public class LyricUtil {
         return millis + second * 1000 + minute * 60 * 1000;
     }
 
+    @SuppressWarnings("unused")
     public static Lyric parseLyric(String text) {
         String[] lines = text.split("\n");
         return parseLyric(lines);
@@ -100,6 +102,12 @@ public class LyricUtil {
         for (String line : lines) {
             parseLyricLine(lyric, line);
         }
+
+        sortLyricLines(lyric);
+        return lyric;
+    }
+
+    private static void sortLyricLines(Lyric lyric) {
         Collections.sort(lyric.getLyricLines(), new Comparator<LyricLine>() {
             @Override
             public int compare(LyricLine o1, LyricLine o2) {
@@ -113,13 +121,13 @@ public class LyricUtil {
                 }
             }
         });
-        return lyric;
     }
 
     public static Lyric parseLyric(InputStream ins) {
         return parseLyric(ins, "utf-8");
     }
 
+    @SuppressWarnings("WeakerAccess")
     public static Lyric parseLyric(InputStream ins, String charsetName) {
         Lyric lyric = new Lyric();
         InputStreamReader isr = null;
@@ -133,40 +141,28 @@ public class LyricUtil {
                 parseLyricLine(lyric, line);
             }
 
-            Collections.sort(lyric.getLyricLines(), new Comparator<LyricLine>() {
-                @Override
-                public int compare(LyricLine o1, LyricLine o2) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                        return Long.compare(o1.getStartTime(), o2.getStartTime());
-                    } else {
-                        long x = o1.getStartTime();
-                        long y = o2.getStartTime();
-                        // noinspection UseCompareMethod
-                        return (x < y) ? -1 : ((x == y) ? 0 : 1);
-                    }
-                }
-            });
+            sortLyricLines(lyric);
 
             return lyric;
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
-            try {
-                if (reader != null) {
-                    reader.close();
-                }
-                if (isr != null) {
-                    isr.close();
-                }
-                if (ins != null) {
-                    ins.close();
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-
+            close(reader);
+            close(isr);
+            close(ins);
         }
         return lyric;
+    }
+
+    private static void close(Closeable closeable) {
+        if (closeable == null) {
+            return;
+        }
+        try {
+            closeable.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -180,36 +176,8 @@ public class LyricUtil {
             return;
         }
 
-        int index = lineText.indexOf("]");
-
-        for (String prefix : PREFIXES) {
-            if (lineText.startsWith(prefix)) {
-                String text = lineText.substring(prefix.length(), index).trim();
-                switch (prefix) {
-                    case PREFIX_TITLE:
-                        lyric.setTitle(text);
-                        return;
-
-                    case PREFIX_ARTIST:
-                        lyric.setArtist(text);
-                        return;
-
-                    case PREFIX_ALBUM:
-                        lyric.setAlbum(text);
-                        return;
-
-                    case PREFIX_BY:
-                        lyric.setBy(text);
-                        return;
-
-                    case PREFIX_OFFSET:
-                        lyric.setOffset(toLong(text));
-                        return;
-
-                    default:
-                }
-                return;
-            }
+        if (parsePrefixLine(lyric, lineText)) {
+            return;
         }
 
         // index of "["
@@ -258,6 +226,42 @@ public class LyricUtil {
             }
             lyricLines.add(line);
         }
+    }
+
+    private static boolean parsePrefixLine(Lyric lyric, String lineText) {
+        int index = lineText.indexOf("]");
+
+        for (String prefix : PREFIXES) {
+            if (!lineText.startsWith(prefix)) {
+                continue;
+            }
+            String text = lineText.substring(prefix.length(), index).trim();
+            switch (prefix) {
+                case PREFIX_TITLE:
+                    lyric.setTitle(text);
+                    break;
+
+                case PREFIX_ARTIST:
+                    lyric.setArtist(text);
+                    break;
+
+                case PREFIX_ALBUM:
+                    lyric.setAlbum(text);
+                    break;
+
+                case PREFIX_BY:
+                    lyric.setBy(text);
+                    break;
+
+                case PREFIX_OFFSET:
+                    lyric.setOffset(toLong(text));
+                    break;
+
+                default:
+            }
+            return true;
+        }
+        return false;
     }
 
     public static List<LyricView.Line> toLines(Lyric lyric) {
