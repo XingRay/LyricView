@@ -1084,6 +1084,7 @@ public class LyricView extends View {
 
         @Override
         public void writeToParcel(Parcel dest, int flags) {
+            super.writeToParcel(dest, flags);
             dest.writeInt(this.mTextColor);
             dest.writeFloat(this.mTextSize);
             dest.writeInt(this.mHighlightTextColor);
