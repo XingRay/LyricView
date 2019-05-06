@@ -1,6 +1,7 @@
 package com.leixing.lyricview;
 
 /**
+ * @author leixing
  * 颜色设计器
  */
 public interface ColorDesigner {

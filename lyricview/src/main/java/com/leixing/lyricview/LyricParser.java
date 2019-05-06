@@ -1,9 +1,6 @@
-package com.leixing.lyricview.helper;
+package com.leixing.lyricview;
 
-import android.os.Build;
 import android.text.TextUtils;
-
-import com.leixing.lyricview.LyricView;
 
 import java.io.BufferedReader;
 import java.io.Closeable;
@@ -19,10 +16,10 @@ import java.util.List;
  * description : xxx
  *
  * @author : leixing
- * email : leixing@baidu.com
+ * email : leixing1012@qq.com
  * @date : 2018/11/10 19:23
  */
-public class LyricUtil {
+public class LyricParser {
     /**
      * 标题
      */
@@ -56,7 +53,7 @@ public class LyricUtil {
             PREFIX_OFFSET
     };
 
-    private LyricUtil() {
+    private LyricParser() {
         throw new UnsupportedOperationException();
     }
 
@@ -108,17 +105,10 @@ public class LyricUtil {
     }
 
     private static void sortLyricLines(Lyric lyric) {
-        Collections.sort(lyric.getLyricLines(), new Comparator<LyricLine>() {
+        Collections.sort(lyric.getLines(), new Comparator<Lyric.Line>() {
             @Override
-            public int compare(LyricLine o1, LyricLine o2) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                    return Long.compare(o1.getStartTime(), o2.getStartTime());
-                } else {
-                    long x = o1.getStartTime();
-                    long y = o2.getStartTime();
-                    // noinspection UseCompareMethod
-                    return (x < y) ? -1 : ((x == y) ? 0 : 1);
-                }
+            public int compare(Lyric.Line o1, Lyric.Line o2) {
+                return Util.compare(o1.getStartTime(), o2.getStartTime());
             }
         });
     }
@@ -216,13 +206,11 @@ public class LyricUtil {
         String content = lineText.substring(contentStartIndex);
 
         for (String timeString : timeStrings) {
-            LyricLine line = new LyricLine();
-            line.setStartTime(getStartTimeMillis(timeString));
-            line.setContent(content);
-            List<LyricLine> lyricLines = lyric.getLyricLines();
+            Lyric.Line line = new Lyric.Line(content, getStartTimeMillis(timeString));
+            List<Lyric.Line> lyricLines = lyric.getLines();
             if (lyricLines == null) {
                 lyricLines = new ArrayList<>();
-                lyric.setLyricLines(lyricLines);
+                lyric.setLines(lyricLines);
             }
             lyricLines.add(line);
         }
@@ -264,24 +252,24 @@ public class LyricUtil {
         return false;
     }
 
-    public static List<LyricView.Line> toLines(Lyric lyric) {
-        List<LyricView.Line> lines = new ArrayList<>();
+    public static List<Line> toLines(Lyric lyric) {
+        List<Line> lines = new ArrayList<>();
 
-        List<LyricLine> lyricLines = lyric.getLyricLines();
+        List<Lyric.Line> lyricLines = lyric.getLines();
         if (lyricLines == null || lyricLines.isEmpty()) {
             return lines;
         }
 
         for (int i = 0, size = lyricLines.size() - 1; i < size; i++) {
-            LyricLine currentLine = lyricLines.get(i);
-            LyricLine nextLine = lyricLines.get(i + 1);
-            lines.add(new LyricView.Line(currentLine.getStartTime(),
+            Lyric.Line currentLine = lyricLines.get(i);
+            Lyric.Line nextLine = lyricLines.get(i + 1);
+            lines.add(new Line(currentLine.getStartTime(),
                     nextLine.getStartTime() - 1, currentLine.getContent()));
         }
-        LyricLine lastLine = lyricLines.get(lyricLines.size() - 1);
+        Lyric.Line lastLine = lyricLines.get(lyricLines.size() - 1);
         String content = lastLine.getContent();
         if (!TextUtils.isEmpty(content)) {
-            lines.add(new LyricView.Line(lastLine.getStartTime(), lastLine.getStartTime(), content));
+            lines.add(new Line(lastLine.getStartTime(), lastLine.getStartTime(), content));
         }
 
         if (isAllContentEmpty(lines)) {
@@ -290,11 +278,11 @@ public class LyricUtil {
         return lines;
     }
 
-    private static boolean isAllContentEmpty(List<LyricView.Line> lines) {
+    private static boolean isAllContentEmpty(List<Line> lines) {
         if (lines == null || lines.isEmpty()) {
             return true;
         }
-        for (LyricView.Line line : lines) {
+        for (Line line : lines) {
             if (!TextUtils.isEmpty(line.getContent())) {
                 return false;
             }

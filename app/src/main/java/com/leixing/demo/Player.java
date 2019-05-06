@@ -9,7 +9,7 @@ import com.leixing.lib.handlercounter.HandlerCounter;
  * description : xxx
  *
  * @author : leixing
- * email : leixing@baidu.com
+ * email : leixing1012@qq.com
  * @date : 2019/1/25 21:41
  */
 public class Player {

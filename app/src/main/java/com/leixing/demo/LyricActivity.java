@@ -14,10 +14,11 @@ import android.widget.TextView;
 
 import com.leixing.demo.util.TaskExecutor;
 import com.leixing.demo.util.TimeUtil;
-import com.leixing.lyricview.LyricColorDesigner;
+import com.leixing.lyricview.Line;
 import com.leixing.lyricview.LyricView;
-import com.leixing.lyricview.helper.Lyric;
-import com.leixing.lyricview.helper.LyricUtil;
+import com.leixing.lyricview.TouchListener;
+import com.leixing.lyricview.Lyric;
+import com.leixing.lyricview.LyricParser;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,7 +29,7 @@ import java.util.List;
  * description : xxx
  *
  * @author : leixing
- * email : leixing@baidu.com
+ * email : leixing1012@qq.com
  * @date : 2018/11/15 14:10
  */
 public class LyricActivity extends Activity {
@@ -110,7 +111,7 @@ public class LyricActivity extends Activity {
     }
 
     private void setListeners() {
-        lvLyric.setTouchListener(new LyricView.TouchListener() {
+        lvLyric.setTouchListener(new TouchListener() {
             @Override
             public void onTouchDown(long timeMills) {
                 Log.i(TAG, "onTouchDown timeMills:" + timeMills);
@@ -198,7 +199,7 @@ public class LyricActivity extends Activity {
                         return;
                     }
                     for (String filename : filenames) {
-                        Lyric lyric = LyricUtil.parseLyric(getAssets().open("lyric" + File.separator + filename));
+                        Lyric lyric = LyricParser.parseLyric(getAssets().open("lyric" + File.separator + filename));
                         mLyrics.add(lyric);
                     }
                     runOnUiThread(new Runnable() {
@@ -217,7 +218,7 @@ public class LyricActivity extends Activity {
     private void playPosition(int position) {
         mPosition = position;
         Lyric lyric = mLyrics.get(mPosition);
-        List<LyricView.Line> lines = LyricUtil.toLines(lyric);
+        List<Line> lines = LyricParser.toLines(lyric);
         lvLyric.setLyric(lines);
         long duration = lines.get(lines.size() - 1).getEndMills();
         mPlayer.play(duration);

@@ -1,4 +1,6 @@
-package com.leixing.lyricview.helper;
+package com.leixing.lyricview;
+
+import android.text.TextUtils;
 
 import java.util.List;
 
@@ -6,7 +8,7 @@ import java.util.List;
  * description : 歌词
  *
  * @author : leixing
- * email : leixing@baidu.com
+ * email : leixing1012@qq.com
  * @date : 2018/11/10 17:31
  */
 public class Lyric {
@@ -39,7 +41,7 @@ public class Lyric {
     /**
      * 歌词
      */
-    private List<LyricLine> lyricLines;
+    private List<Line> lines;
 
     public String getTitle() {
         return title;
@@ -86,12 +88,12 @@ public class Lyric {
         return this;
     }
 
-    public List<LyricLine> getLyricLines() {
-        return lyricLines;
+    public List<Line> getLines() {
+        return lines;
     }
 
-    public Lyric setLyricLines(List<LyricLine> lyricLines) {
-        this.lyricLines = lyricLines;
+    public Lyric setLines(List<Line> lines) {
+        this.lines = lines;
         return this;
     }
 
@@ -103,12 +105,58 @@ public class Lyric {
                 + ", \"album\": \"" + album + '\"' + "\n"
                 + ", \"by\": \"" + by + '\"' + "\n"
                 + ", \"offset\": \"" + offset + "\n"
-                + ", \"lyricLines\": \"" + "\n";
+                + ", \"lines\": \"" + "\n";
         StringBuilder sb = new StringBuilder(str);
-        for (LyricLine line : lyricLines) {
+        for (Line line : lines) {
             sb.append(line).append("\n");
         }
         sb.append('}');
         return sb.toString();
+    }
+
+    public boolean isEmpty(){
+        if (lines == null || lines.isEmpty()) {
+            return true;
+        }
+        for (Line line : lines) {
+            if (!TextUtils.isEmpty(line.getContent())) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * description : 歌词
+     *
+     * @author : leixing
+     * email : leixing1012@qq.com
+     * @date : 2018/11/10 17:31
+     */
+    public static class Line {
+        private final String content;
+        private final long startTime;
+
+        public Line(String content, long startTime) {
+            this.content = content;
+            this.startTime = startTime;
+        }
+
+        public String getContent() {
+            return content;
+        }
+
+        public long getStartTime() {
+            return startTime;
+        }
+
+        @Override
+        public String toString() {
+            return "\"Line\": {"
+                    + "\"content\": \"" + content + '\"'
+                    + ", \"startTime\": \"" + startTime
+                    + '}';
+        }
     }
 }

@@ -1,12 +1,12 @@
 package com.leixing.demo;
 
-import com.leixing.lyricview.helper.Lyric;
+import com.leixing.lyricview.Lyric;
 
 /**
  * description : xxx
  *
  * @author : leixing
- * email : leixing@baidu.com
+ * email : leixing1012@qq.com
  * @date : 2019/1/25 17:25
  */
 public class Music {

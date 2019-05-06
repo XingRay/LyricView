@@ -4,7 +4,7 @@ package com.leixing.demo.util;
  * description : xxx
  *
  * @author : leixing
- * email : leixing@baidu.com
+ * email : leixing1012@qq.com
  * @date : 2018/8/28 19:36
  */
 public class TimeUtil {

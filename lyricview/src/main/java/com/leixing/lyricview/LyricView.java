@@ -6,11 +6,16 @@ import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Message;
 import android.os.Parcel;
 import android.os.Parcelable;
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.text.Layout;
+import android.text.StaticLayout;
+import android.text.TextPaint;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
@@ -19,6 +24,7 @@ import android.view.ViewConfiguration;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -90,6 +96,7 @@ public class LyricView extends View {
     // saved state
 
     private List<Line> mLines = new ArrayList<>();
+    private List<LineGroup> mLineGroups = new ArrayList<>();
 
     private long mCurrentTimeMills = 0;
 
@@ -107,12 +114,12 @@ public class LyricView extends View {
     private float mScrollOffsetYTo;
     private float mScrollOffsetYFrom;
     private float mTextHeight;
-    private Paint mTextPaint;
-    private Paint mHighlightTextPaint;
-    private Paint mKaraokePaint;
-    private Paint mZoomOutPaint;
-    private Paint mZoomInPaint;
-    private Paint mKaraokeZoomInPaint;
+    private TextPaint mTextPaint;
+    private TextPaint mHighlightTextPaint;
+    private TextPaint mKaraokePaint;
+    private TextPaint mZoomOutPaint;
+    private TextPaint mZoomInPaint;
+    private TextPaint mKaraokeZoomInPaint;
     private Paint.FontMetrics mTextFontMetrics;
     private Paint.FontMetrics mHighlightFontMetrics;
     private RectF mPlayedRegion = new RectF();
@@ -156,23 +163,23 @@ public class LyricView extends View {
 
         mHandler = new InternalHandler();
 
-        mTextPaint = new Paint();
+        mTextPaint = new TextPaint();
         mTextPaint.setAntiAlias(true);
 
-        mHighlightTextPaint = new Paint();
+        mHighlightTextPaint = new TextPaint();
         mHighlightTextPaint.setAntiAlias(true);
 
-        mKaraokePaint = new Paint();
+        mKaraokePaint = new TextPaint();
         mKaraokePaint.setAntiAlias(true);
         mKaraokePaint.setFakeBoldText(true);
 
-        mZoomOutPaint = new Paint();
+        mZoomOutPaint = new TextPaint();
         mZoomOutPaint.setAntiAlias(true);
 
-        mZoomInPaint = new Paint();
+        mZoomInPaint = new TextPaint();
         mZoomInPaint.setAntiAlias(true);
 
-        mKaraokeZoomInPaint = new Paint();
+        mKaraokeZoomInPaint = new TextPaint();
         mKaraokeZoomInPaint.setAntiAlias(true);
         mKaraokeZoomInPaint.setFakeBoldText(true);
 
@@ -378,7 +385,7 @@ public class LyricView extends View {
                 mScrollOffsetYFrom = mCurrentOffsetY;
                 mScrollOffsetYTo = offsetY;
                 Line line = mLines.get(mCurrentLineIndex);
-                long lineMills = line.endMills - mills;
+                long lineMills = line.getEndMills() - mills;
                 long scrollTime = Math.min(mScrollTimeMax, lineMills);
                 mScrollVelocity = Math.abs(mScrollOffsetYTo - mScrollOffsetYFrom) / scrollTime;
                 updateState(State.SCROLLING_WITH_SCALE);
@@ -442,9 +449,9 @@ public class LyricView extends View {
             }
 
             Line line = mLines.get(i);
-            String content = line.content;
-            long startMills = line.startMills;
-            long endMills = line.endMills;
+            String content = line.getContent();
+            long startMills = line.getStartMills();
+            long endMills = line.getEndMills();
 
             if (hasScaleAnimation()) {
                 if (i == mLastLineIndex) {
@@ -486,6 +493,18 @@ public class LyricView extends View {
                 canvas.drawText(content, x, baseLine, mTextPaint);
             }
         }
+    }
+
+    @NonNull
+    private StaticLayout getStaticLayout(String content, TextPaint paint, int width, Layout.Alignment alignment) {
+        StaticLayout staticLayout;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            staticLayout = StaticLayout.Builder.obtain(content, 0, content.length(), paint, width).setAlignment(alignment).build();
+        } else {
+            // noinspection deprecation
+            staticLayout = new StaticLayout(content, paint, width, alignment, 1f, 0f, false);
+        }
+        return staticLayout;
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -548,8 +567,8 @@ public class LyricView extends View {
 
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
-        mWidth = w;
-        mHeight = h;
+        mWidth = w - getPaddingLeft() - getPaddingRight();
+        mHeight = h - getPaddingTop() - getPaddingBottom();
         mHighlightOffset = getHighlightOffset(h);
 
         updateLinesVariables();
@@ -582,6 +601,45 @@ public class LyricView extends View {
 
         mTouchMinOffsetY = mHighlightOffset - computeOffsetYByIndex(mLines.size() + 3, 0);
         mTouchMaxOffsetY = mHighlightOffset + computeOffsetYByIndex(3, 0);
+
+        splitLongLineToLineGroup();
+    }
+
+    private void splitLongLineToLineGroup() {
+        mLineGroups.clear();
+        if (mLines.isEmpty()) {
+            return;
+        }
+
+        for (Line line : mLines) {
+            String content = line.getContent();
+            float lineWidth = mHighlightTextPaint.measureText(content);
+            if (lineWidth > mWidth) {
+                StaticLayout layout = getStaticLayout(content, mHighlightTextPaint, mWidth, Layout.Alignment.ALIGN_LEFT);
+                int lineCount = layout.getLineCount();
+                Line[] lines = new Line[lineCount];
+                long startMills = line.getStartMills();
+                long endMills = line.getEndMills();
+                int length = content.length();
+
+                for (int i = 0; i < lineCount; i++) {
+                    int lineStart = layout.getLineStart(i);
+                    int lineEnd = layout.getLineEnd(i);
+                    long startTime = Util.valueOfRatio(startMills, endMills, ((double) lineStart) / length);
+                    long endTime = Util.valueOfRatio(startMills, endMills, ((double) lineEnd) / length);
+                    lines[i] = new Line(startTime, endTime, content.substring(lineStart, lineEnd));
+                }
+                mLineGroups.add(new LineGroup(lines));
+            } else {
+                mLineGroups.add(new LineGroup(new Line[]{line}));
+            }
+        }
+
+        mLines.clear();
+        for (LineGroup group : mLineGroups) {
+            Line[] lines = group.getLines();
+            mLines.addAll(Arrays.asList(lines));
+        }
     }
 
     @Nullable
@@ -627,7 +685,7 @@ public class LyricView extends View {
 
     private void scrollToLine(int index, boolean smooth) {
         Line line = mLines.get(index);
-        mCurrentTimeMills = line.startMills;
+        mCurrentTimeMills = line.getStartMills();
         float offsetY = mHighlightOffset - computeOffsetYByIndex(index, index);
         if (mCurrentOffsetY == offsetY) {
             return;
@@ -688,20 +746,20 @@ public class LyricView extends View {
         if (mLines.isEmpty()) {
             return 0;
         }
-        if (timeMills <= mLines.get(0).startMills) {
+        if (timeMills <= mLines.get(0).getStartMills()) {
             return 0;
         }
-        if (timeMills >= mLines.get(mLines.size() - 1).endMills) {
+        if (timeMills >= mLines.get(mLines.size() - 1).getEndMills()) {
             return mLines.size() - 1;
         }
         int index = Collections.binarySearch(mLines, new Line(timeMills, timeMills, ""), new Comparator<Line>() {
             @Override
             public int compare(Line o1, Line o2) {
-                if (o2.startMills >= o1.startMills && o2.endMills <= o1.endMills) {
+                if (o2.getStartMills() >= o1.getStartMills() && o2.getEndMills() <= o1.getEndMills()) {
                     return 0;
                 } else {
-                    long x = o1.startMills;
-                    long y = o2.startMills;
+                    long x = o1.getStartMills();
+                    long y = o2.getStartMills();
                     //noinspection UseCompareMethod
                     return (x < y) ? -1 : ((x == y) ? 0 : 1);
                 }
@@ -757,7 +815,7 @@ public class LyricView extends View {
         } else if (index >= mLines.size()) {
             index = mLines.size() - 1;
         }
-        return mLines.get(index).startMills;
+        return mLines.get(index).getStartMills();
     }
 
     private float computeOffsetYByTimeMills(long timeMills) {
@@ -949,86 +1007,6 @@ public class LyricView extends View {
         return mLineSpacing;
     }
 
-    @SuppressWarnings("WeakerAccess")
-    public static class Line implements Parcelable {
-        private long startMills;
-        private long endMills;
-        private String content;
-
-        public Line(long startMills, long endMills, String content) {
-            this.startMills = startMills;
-            this.endMills = endMills;
-            this.content = content;
-        }
-
-        Line(Parcel in) {
-            this.startMills = in.readLong();
-            this.endMills = in.readLong();
-            this.content = in.readString();
-        }
-
-        public long getStartMills() {
-            return startMills;
-        }
-
-        public Line setStartMills(long startMills) {
-            this.startMills = startMills;
-            return this;
-        }
-
-        public long getEndMills() {
-            return endMills;
-        }
-
-        public Line setEndMills(long endMills) {
-            this.endMills = endMills;
-            return this;
-        }
-
-        public String getContent() {
-            return content;
-        }
-
-        public Line setContent(String content) {
-            this.content = content;
-            return this;
-        }
-
-        @SuppressWarnings("NullableProblems")
-        @Override
-        public String toString() {
-            return "\"Line\": {"
-                    + "\"startMills\": \"" + startMills
-                    + ", \"endMills\": \"" + endMills
-                    + ", \"content\": \"" + content + '\"'
-                    + '}';
-        }
-
-        @Override
-        public int describeContents() {
-            return 0;
-        }
-
-        @Override
-        public void writeToParcel(Parcel dest, int flags) {
-            dest.writeLong(this.startMills);
-            dest.writeLong(this.endMills);
-            dest.writeString(this.content);
-        }
-
-        public static final Parcelable.Creator<Line> CREATOR = new Parcelable.Creator<Line>() {
-            @Override
-            public Line createFromParcel(Parcel source) {
-                return new Line(source);
-            }
-
-            @Override
-            public Line[] newArray(int size) {
-                return new Line[size];
-            }
-        };
-    }
-
     private static class SavedState extends BaseSavedState {
 
         private int mTextColor;
@@ -1162,29 +1140,6 @@ public class LyricView extends View {
 
             return (LyricView) o;
         }
-    }
-
-    public interface TouchListener {
-        /**
-         * 用户按下
-         *
-         * @param timeMills 处于控件中心的歌词的播放起始时间
-         */
-        void onTouchDown(long timeMills);
-
-        /**
-         * 触摸滑动中
-         *
-         * @param timeMills 处于控件中心的歌词的播放起始时间
-         */
-        void onTouchMoving(long timeMills);
-
-        /**
-         * 触摸结束
-         *
-         * @param timeMills 处于控件中心的歌词的播放起始时间
-         */
-        void onTouchUp(long timeMills);
     }
 
     private enum State {
