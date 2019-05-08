@@ -10,7 +10,9 @@
         <attr name="lyric_view_karaoke_enable" format="boolean" />
         <attr name="lyric_view_karaoke_color" format="color|reference" />
 
-        <attr name="lyric_view_line_spacing" format="dimension|reference" />
+        <attr name="lyric_view_line_distance" format="dimension|reference" />
+        <attr name="lyric_view_break_line_distance" format="dimension|reference" />
+
         <attr name="lyric_view_fling_accelerate" format="float" />
 
         <attr name="lyric_view_scroll_time_interval" format="integer|reference" />
@@ -20,12 +22,18 @@
         <attr name="lyric_view_auto_scroll_back" format="boolean" />
 
         <attr name="lyric_view_highlight_gravity">
-            <enum name="center" value="0" />
+            <enum name="center_vertical" value="0" />
             <enum name="top" value="1" />
             <enum name="bottom" value="2" />
         </attr>
 
-        <attr name="lyric_view_highlight_margin_top" format="dimension|reference" />
+        <attr name="lyric_view_line_gravity">
+            <enum name="center_horizontal" value="0" />
+            <enum name="left" value="1" />
+            <enum name="right" value="2" />
+        </attr>
+
+        <attr name="lyric_view_highlight_offset" format="dimension|reference" />
 
     </declare-styleable>
 </resources>

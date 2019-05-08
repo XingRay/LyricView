@@ -1,6 +1,10 @@
 package com.leixing.lyricview;
 
 import android.os.Build;
+import android.support.annotation.NonNull;
+import android.text.Layout;
+import android.text.StaticLayout;
+import android.text.TextPaint;
 
 /**
  * 工具类
@@ -23,5 +27,17 @@ public class Util {
             // noinspection UseCompareMethod
             return (x < y) ? -1 : ((x == y) ? 0 : 1);
         }
+    }
+
+    @NonNull
+    static StaticLayout getStaticLayout(String content, TextPaint paint, int width, Layout.Alignment alignment) {
+        StaticLayout staticLayout;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            staticLayout = StaticLayout.Builder.obtain(content, 0, content.length(), paint, width).setAlignment(alignment).build();
+        } else {
+            // noinspection deprecation
+            staticLayout = new StaticLayout(content, paint, width, alignment, 1f, 0f, false);
+        }
+        return staticLayout;
     }
 }

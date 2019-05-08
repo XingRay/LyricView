@@ -73,7 +73,7 @@ public class LyricActivity extends Activity {
         mPlayer.setPlayerListener(new Player.PlayerListener() {
             @Override
             public void onProgress(long progress, long duration) {
-                lvLyric.updateTimeMills(progress);
+                lvLyric.setTime(progress);
                 sbSeekBar.setProgress((int) progress);
                 showProgress(progress);
             }
