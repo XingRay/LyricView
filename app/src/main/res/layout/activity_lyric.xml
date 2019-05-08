@@ -13,8 +13,7 @@
         app:layout_constraintBottom_toTopOf="@+id/v_op"
         app:layout_constraintTop_toTopOf="parent"
         app:lyric_view_break_line_distance="30dp"
-        app:lyric_view_highlight_gravity="top"
-        app:lyric_view_highlight_text_size="18sp"
+        app:lyric_view_highlight_text_size="20sp"
         app:lyric_view_line_distance="40dp"
         app:lyric_view_text_size="16sp" />
 
