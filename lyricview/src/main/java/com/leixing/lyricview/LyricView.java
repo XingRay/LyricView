@@ -91,6 +91,7 @@ public class LyricView extends View {
     private float mBreakLineDistance;
 
     private int mScrollTimeInterval;
+    private int mScrollTimeMin = 300;
     private int mScrollTimeMax;
 
     private boolean mAutoScrollBack;
@@ -220,7 +221,7 @@ public class LyricView extends View {
     /**
      * 一次滑动的总距离
      */
-    private float mScrollTranslateY;
+    private float mScrollTranslationY;
 
 
     public LyricView(Context context) {
@@ -387,8 +388,7 @@ public class LyricView extends View {
 
         if (mDrawRegionWidth > 0) {
             updateLinesVariables();
-            mTranslationY = 0;
-            updateTranslatedViewToLyric();
+            updateTranslationY(0);
             invalidate();
         }
     }
@@ -491,13 +491,8 @@ public class LyricView extends View {
                     break;
                 }
 
-                Line line = mLines.get(mCurrentGroupIndex);
-                long lineMills = line.getEndMills() - mills;
-                long scrollTime = Math.min(mScrollTimeMax, lineMills);
-                mScrollVelocity = Math.abs(mTranslationY) / scrollTime;
-                mScrollTranslateY = mTranslationY;
                 updateState(State.SCROLLING_WITH_SCALE);
-                performScroll();
+                startScroll();
                 break;
 
             case SCROLLING_WITH_SCALE:
@@ -513,6 +508,17 @@ public class LyricView extends View {
             default:
                 break;
         }
+    }
+
+    private void startScroll() {
+        float distance = -mTranslationY;
+        Line line = mLines.get(mCurrentGroupIndex);
+        long lineMills = line.getEndMills() - mCurrentTimeMills;
+        long scrollTime = Util.limit(lineMills, mScrollTimeMin, mScrollTimeMax);
+        mScrollVelocity = distance / scrollTime + 1;
+        mScrollTranslationY = mTranslationY;
+
+        performScroll();
     }
 
     private void calcOffset() {
@@ -722,7 +728,7 @@ public class LyricView extends View {
                 float y = event.getY();
                 float deltaY = y - mTouchStartY;
                 mTouchStartY = y;
-                mViewToLyric = limit(mViewToLyric + deltaY, mTouchMinOffsetY, mTouchMaxOffsetY);
+                updateTranslationY(mTranslationY + deltaY);
                 invalidate();
                 if (mTouchListener != null) {
                     long timeMills = getTimeMillsByOffsetY(mViewToLyric);
@@ -734,6 +740,8 @@ public class LyricView extends View {
                 mVelocityTracker.computeCurrentVelocity(1);
                 mFlingVelocity = mVelocityTracker.getYVelocity();
                 int minFlingVelocity = ViewConfiguration.get(getContext()).getScaledMinimumFlingVelocity() / 1000;
+                // FIXME: 2019/5/10
+                mFlingVelocity = 0;
                 if (Math.abs(mFlingVelocity) > minFlingVelocity) {
                     updateState(State.FLINGING);
                     performFling();
@@ -938,19 +946,13 @@ public class LyricView extends View {
         }
 
         float distance = mScrollVelocity * mScrollTimeInterval;
-
-        if (Math.abs(mTranslationY) > distance) {
-            mTranslationY += mTranslationY > 0 ? -distance : distance;
-        } else {
-            mTranslationY = 0;
-        }
-        updateTranslatedViewToLyric();
+        updateTranslationY(Util.approach(mTranslationY, 0, Math.abs(distance)));
 
         if (hasScaleAnimation()) {
-            float ratio = 1 - (mTranslationY / mScrollTranslateY);
+            float ratio = 1 - (mTranslationY / mScrollTranslationY);
 
             float zoomOutTextSize = Util.calcInterValue(mHighlightTextSize, mTextSize, ratio);
-            int zoomOutTextColor = Util.evaluateInt(mKaraokeEnable?mKaraokeTextColor:mHighlightTextColor, mTextColor, ratio);
+            int zoomOutTextColor = Util.evaluateInt(mKaraokeEnable ? mKaraokeTextColor : mHighlightTextColor, mTextColor, ratio);
             mZoomOutPaint.setTextSize(zoomOutTextSize);
             mZoomOutPaint.setColor(zoomOutTextColor);
 
@@ -969,7 +971,8 @@ public class LyricView extends View {
         sendMessage(InternalHandler.SCROLL, mScrollTimeInterval);
     }
 
-    private void updateTranslatedViewToLyric() {
+    private void updateTranslationY(float translationY) {
+        mTranslationY = translationY;
         mTranslatedViewToLyric = mViewToLyric + mTranslationY;
     }
 
@@ -1111,16 +1114,14 @@ public class LyricView extends View {
         if (mState != State.STAY) {
             return;
         }
-        float offsetY = mHighlightOffset - computeOffsetYByIndex(mCurrentGroupIndex, mCurrentGroupIndex);
-        if (mViewToLyric == offsetY || !mAutoScrollBack) {
+
+        if (mTranslationY == 0 || !mAutoScrollBack) {
             updateState(State.IDLE);
             return;
         }
-//        mScrollOffsetYFrom = mViewToLyric;
-//        mScrollOffsetYTo = offsetY;
-//        mScrollVelocity = Math.abs(mScrollOffsetYTo - mScrollOffsetYFrom) / mScrollTimeMax;
-//        updateState(State.SCROLLING);
-//        performScroll();
+
+        updateState(State.SCROLLING);
+        startScroll();
     }
 
     private List<Line> splitTooLongLineToLines(Line line, Paint paint, int limit) {

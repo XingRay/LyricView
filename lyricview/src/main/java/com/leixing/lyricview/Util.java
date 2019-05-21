@@ -148,4 +148,18 @@ class Util {
                 | (result1 << 8)
                 | result0;
     }
+
+    static float approach(float start, float destination, float step) {
+        float distance = Math.abs(destination - start);
+        if (step < distance) {
+            return start < destination ? start + step : start - step;
+        } else {
+            return destination;
+        }
+    }
+
+    static long limit(long value, long min, long max) {
+        assert min <= max;
+        return value < min ? min : (value > max ? max : value);
+    }
 }
