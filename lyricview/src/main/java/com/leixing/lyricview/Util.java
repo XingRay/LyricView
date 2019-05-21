@@ -159,7 +159,10 @@ class Util {
     }
 
     static long limit(long value, long min, long max) {
-        assert min <= max;
+        return value < min ? min : (value > max ? max : value);
+    }
+
+    static float limit(float value, float min, float max) {
         return value < min ? min : (value > max ? max : value);
     }
 }

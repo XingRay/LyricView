@@ -26,11 +26,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * description : xxx
+ * description : 歌词显示控件
  *
  * @author : leixing
  * email : leixing1012@qq.com
  * @date : 2018/11/10 20:04
+ * <p>
+ * todo 测试嵌套滑动，是否有滑动冲突
+ * todo 绘制区域界定
+ * todo 单字karaoke模式支持
+ * todo 超出边界时拖动时带有弹性效果，并且支持自定义插值器
  */
 @SuppressWarnings("unused")
 public class LyricView extends View {
@@ -54,7 +59,7 @@ public class LyricView extends View {
     private static final int FLING_TIME_INTERVAL_DEFAULT = 20;
 
     private static final int SCROLL_TIME_MAX_DEFAULT = 300;
-    private static final float FLING_ACCELERATE_DEFAULT = 0.005f;
+    private static final float FLING_ACCELERATE_DEFAULT = 0.02f;
 
     private static final int STOP_TIME_DEFAULT = 2000;
     private static final boolean AUTO_SCROLL_BACK_DEFAULT = true;
@@ -85,14 +90,15 @@ public class LyricView extends View {
      * pixel / mills^2
      */
     private float mFlingAccelerate;
-    private int mFlingTimeInterval;
+    private long mFlingTimeInterval;
 
     private float mLineDistance;
     private float mBreakLineDistance;
 
-    private int mScrollTimeInterval;
-    private int mScrollTimeMin = 300;
-    private int mScrollTimeMax;
+    private long mScrollTimeInterval;
+
+    private long mMinScrollTimeMills = 300;
+    private long mMaxScrollTimeMills;
 
     private boolean mAutoScrollBack;
     private int mStopTime;
@@ -113,16 +119,25 @@ public class LyricView extends View {
     // temp values
 
     /**
-     * 控件顶部(不是)到第0行控件顶部的偏移量，向下为正
+     * 歌词在没有滑动时控件顶部到第0行歌词顶部的偏移量，向下为正
+     * 取值由歌词数据、当前播放的时间和高亮歌词显示的位置决定
      * 与{@link #mTranslationY}共同决定歌词绘制的位置
      */
-    private float mViewToLyric;
+    private float mLyricTop;
 
     /**
-     * 控件在Y方向上的偏移量，向下为正
-     * 与{@link #mViewToLyric}共同决定歌词绘制的位置
+     * 歌词在Y方向上的偏移量，向下为正
+     * 取值由当前的滑动、滚动状态决定
+     * 与{@link #mLyricTop}共同决定歌词绘制的位置
      */
     private float mTranslationY;
+
+    /**
+     * 歌词绘制的位置，即歌词第0行顶部在控件中的位置
+     * 由{@link #mLyricTop}和{@link #mTranslationY}共同决定
+     * 取值为： {@link #mLyricTop} + {@link #mTranslationY};
+     */
+    private float mTranslatedLyricTop;
 
     /**
      * 歌词绘制区域左边界
@@ -167,7 +182,22 @@ public class LyricView extends View {
      */
     private int mLastGroupIndex = -1;
 
+    /**
+     * 高亮行的偏移量，与{@link #mHighlightGravity}共同决定高亮行所在的位置
+     */
     private int mHighlightOffset;
+
+//    public static final int HIGHLIGHT_GRAVITY_CENTER_VERTICAL = 0;
+//    public static final int HIGHLIGHT_GRAVITY_TOP = 1;
+//    public static final int HIGHLIGHT_GRAVITY_BOTTOM = 2;
+
+    /**
+     * 高量行的位置，取值为
+     * {@link #HIGHLIGHT_GRAVITY_CENTER_VERTICAL} 高亮行位于控件中心
+     * {@link #HIGHLIGHT_GRAVITY_TOP} 高亮行位于控件顶部
+     * {@link #HIGHLIGHT_GRAVITY_BOTTOM} 高亮行位于控件底部
+     */
+    private int mHighlightGravity;
 
     private float mTouchStartY;
 
@@ -202,26 +232,31 @@ public class LyricView extends View {
     private float mFlingVelocity;
     private float mScrollVelocity;
     private float mHighlightTextHeight;
-    private long mFlingTimeMills;
+    private long mFlingStartTimeMills;
+
     private float mFlingMinOffsetY;
     private float mFlingMaxOffsetY;
+
     private float mTouchMinOffsetY;
     private float mTouchMaxOffsetY;
 
-    private int mHighlightGravity;
-    private float mViewToHighlightGroup;
+    private float mHighlightGroupCenter;
 
     // listeners
 
     private TouchListener mTouchListener;
     private ColorDesigner mColorDesigner;
     private Layout.Alignment mAlignment;
-    private float mLyricToHighlightGroup;
-    private float mTranslatedViewToLyric;
+    private float mLyricTopToHighlightGroupCenter;
     /**
      * 一次滑动的总距离
      */
     private float mScrollTranslationY;
+
+    /**
+     * 歌词首行中线到尾行中线的距离
+     */
+    private float mLyricFirstLineToLastLineDistance;
 
 
     public LyricView(Context context) {
@@ -345,12 +380,11 @@ public class LyricView extends View {
             case LINE_GRAVITY_CENTER_HORIZONTAL:
             default:
                 mAlignment = Layout.Alignment.ALIGN_CENTER;
-
         }
     }
 
     private void setHighlightOffset(float highlightMarginTop) {
-        mViewToHighlightGroup = highlightMarginTop;
+        mHighlightGroupCenter = highlightMarginTop;
         invalidate();
     }
 
@@ -364,14 +398,14 @@ public class LyricView extends View {
     }
 
     public void setScrollTimeMax(int scrollTimeMax) {
-        mScrollTimeMax = scrollTimeMax;
+        mMaxScrollTimeMills = scrollTimeMax;
     }
 
-    public void setScrollTimeInterval(int scrollTimeInterval) {
+    public void setScrollTimeInterval(long scrollTimeInterval) {
         mScrollTimeInterval = scrollTimeInterval;
     }
 
-    public void setFlingTimeInterval(int flingTimeInterval) {
+    public void setFlingTimeInterval(long flingTimeInterval) {
         mFlingTimeInterval = flingTimeInterval;
     }
 
@@ -480,7 +514,7 @@ public class LyricView extends View {
             mLastGroupIndex = mCurrentGroupIndex;
             mCurrentGroupIndex = index;
             calcOffset();
-            mTranslationY = mTranslatedViewToLyric - mViewToLyric;
+            mTranslationY = mTranslatedLyricTop - mLyricTop;
         }
 
         switch (mState) {
@@ -514,7 +548,7 @@ public class LyricView extends View {
         float distance = -mTranslationY;
         Line line = mLines.get(mCurrentGroupIndex);
         long lineMills = line.getEndMills() - mCurrentTimeMills;
-        long scrollTime = Util.limit(lineMills, mScrollTimeMin, mScrollTimeMax);
+        long scrollTime = Util.limit(lineMills, mMinScrollTimeMills, mMaxScrollTimeMills);
         mScrollVelocity = distance / scrollTime + 1;
         mScrollTranslationY = mTranslationY;
 
@@ -522,23 +556,23 @@ public class LyricView extends View {
     }
 
     private void calcOffset() {
-        mViewToHighlightGroup = getViewToHighlightGroup();
-        mLyricToHighlightGroup = getLyricToHighlightGroup();
-        mViewToLyric = mViewToHighlightGroup - mLyricToHighlightGroup;
+        mHighlightGroupCenter = getHighlightGroupCenter();
+        mLyricTopToHighlightGroupCenter = getLyricTopToHighlightGroupCenter();
+        mLyricTop = mHighlightGroupCenter - mLyricTopToHighlightGroupCenter;
 
-        Log.i(TAG, "setTime"
-                + "\nmCurrentGroupIndex: " + mCurrentGroupIndex
-                + "\nmLastGroupIndex: " + mLastGroupIndex
-                + "\nmViewToHighlightGroup: " + mViewToHighlightGroup
-                + "\nmLyricToHighlightGroup: " + mLyricToHighlightGroup
-                + "\nmViewToLyric: " + mViewToLyric
-                + "\nmTranslatedViewToLyric: " + mTranslatedViewToLyric
-                + "\nmDrawRegionHeight: " + mDrawRegionHeight
-                + "\nmDrawRegionTop: " + mDrawRegionTop
-                + "\nmLineDistance: " + mLineDistance
-                + "\nmBreakLineDistance: " + mBreakLineDistance
-                + "\nmTextHeight: " + mTextHeight
-                + "\nmHighlightTextHeight: " + mHighlightTextHeight);
+//        Log.i(TAG, "setTime"
+//                + "\nmCurrentGroupIndex: " + mCurrentGroupIndex
+//                + "\nmLastGroupIndex: " + mLastGroupIndex
+//                + "\nmHighlightGroupCenter: " + mHighlightGroupCenter
+//                + "\nmLyricTopToHighlightGroupCenter: " + mLyricTopToHighlightGroupCenter
+//                + "\nmLyricTop: " + mLyricTop
+//                + "\nmTranslatedLyricTop: " + mTranslatedLyricTop
+//                + "\nmDrawRegionHeight: " + mDrawRegionHeight
+//                + "\nmDrawRegionTop: " + mDrawRegionTop
+//                + "\nmLineDistance: " + mLineDistance
+//                + "\nmBreakLineDistance: " + mBreakLineDistance
+//                + "\nmTextHeight: " + mTextHeight
+//                + "\nmHighlightTextHeight: " + mHighlightTextHeight);
     }
 
     /**
@@ -546,7 +580,7 @@ public class LyricView extends View {
      *
      * @return 距离值
      */
-    private float getLyricToHighlightGroup() {
+    private float getLyricTopToHighlightGroupCenter() {
         int breakNum = 0;
         for (int i = 0; i < mCurrentGroupIndex; i++) {
             breakNum += Math.max(0, mLineGroups.get(i).getLines().length - 1);
@@ -562,7 +596,7 @@ public class LyricView extends View {
      *
      * @return 距离值
      */
-    private float getViewToHighlightGroup() {
+    private float getHighlightGroupCenter() {
         float offset;
         switch (mHighlightGravity) {
             case HIGHLIGHT_GRAVITY_TOP:
@@ -618,9 +652,9 @@ public class LyricView extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
-        int fromIndex = getFromIndex();
-        int toIndex = getToIndex();
-        float offset = mTranslatedViewToLyric;
+        int fromIndex = getDrawStartIndex();
+        int toIndex = getDrawEndIndex();
+        float offset = mTranslatedLyricTop;
 
         int breakLineNum = 0;
         int lineNum = 0;
@@ -639,7 +673,7 @@ public class LyricView extends View {
             lineNum++;
 
             // 避免float累加误差
-            offset = mTranslatedViewToLyric + breakLineNum * mBreakLineDistance + lineNum * mLineDistance;
+            offset = mTranslatedLyricTop + breakLineNum * mBreakLineDistance + lineNum * mLineDistance;
         }
     }
 
@@ -697,11 +731,11 @@ public class LyricView extends View {
         }
     }
 
-    private int getFromIndex() {
+    private int getDrawStartIndex() {
         return 0;
     }
 
-    private int getToIndex() {
+    private int getDrawEndIndex() {
         return mLineGroups.size() - 1;
     }
 
@@ -726,12 +760,21 @@ public class LyricView extends View {
             case MotionEvent.ACTION_MOVE:
                 mVelocityTracker.addMovement(event);
                 float y = event.getY();
-                float deltaY = y - mTouchStartY;
+                float distance = y - mTouchStartY;
                 mTouchStartY = y;
-                updateTranslationY(mTranslationY + deltaY);
+//                Log.i(TAG, "onTouchEvent"
+//                        + "\nmLyricTop: " + mLyricTop
+//                        + "\nmTranslationY: " + mTranslationY
+//                        + "\ndistance: " + distance
+//                        + "\nmTouchMinOffsetY: " + mTouchMinOffsetY
+//                        + "\nmTouchMaxOffsetY: " + mTouchMaxOffsetY);
+                distance = getTouchScrollDeltaY(mLyricTop, mTranslationY, distance, mTouchMinOffsetY, mTouchMaxOffsetY);
+//                Log.i(TAG, "getTouchScrollDeltaY: " + distance);
+
+                updateTranslationY(mTranslationY + distance);
                 invalidate();
                 if (mTouchListener != null) {
-                    long timeMills = getTimeMillsByOffsetY(mViewToLyric);
+                    long timeMills = getTimeMillsByOffsetY(mLyricTop);
                     mTouchListener.onTouchMoving(timeMills);
                 }
                 return true;
@@ -739,20 +782,24 @@ public class LyricView extends View {
             case MotionEvent.ACTION_UP:
                 mVelocityTracker.computeCurrentVelocity(1);
                 mFlingVelocity = mVelocityTracker.getYVelocity();
+                mVelocityTracker.recycle();
+                mVelocityTracker = null;
+
                 int minFlingVelocity = ViewConfiguration.get(getContext()).getScaledMinimumFlingVelocity() / 1000;
-                // FIXME: 2019/5/10
-                mFlingVelocity = 0;
+
+                Log.i(TAG, "MotionEvent.ACTION_UP: "
+                        + "\nmFlingVelocity: " + mFlingVelocity
+                        + "\nminFlingVelocity: " + minFlingVelocity);
+
                 if (Math.abs(mFlingVelocity) > minFlingVelocity) {
-                    updateState(State.FLINGING);
-                    performFling();
+                    startFling();
                 } else {
                     mFlingVelocity = 0;
-                    mVelocityTracker.recycle();
-                    mVelocityTracker = null;
                     updateState(State.STAY);
                 }
+
                 if (mTouchListener != null) {
-                    long timeMills = getTimeMillsByOffsetY(mViewToLyric);
+                    long timeMills = getTimeMillsByOffsetY(mLyricTop);
                     mTouchListener.onTouchUp(timeMills);
                 }
                 return true;
@@ -776,69 +823,6 @@ public class LyricView extends View {
         mDrawRegionHeight = mDrawRegionBottom - mDrawRegionTop;
 
         updateLinesVariables();
-    }
-
-    protected int getHighlightOffset(int h) {
-        int offset;
-        switch (mHighlightGravity) {
-            case HIGHLIGHT_GRAVITY_TOP:
-                offset = (int) (mHighlightTextHeight * 0.5);
-                break;
-            case HIGHLIGHT_GRAVITY_BOTTOM:
-                offset = mHighlightOffset = h - (int) (mHighlightTextHeight * 0.5);
-                break;
-
-            case HIGHLIGHT_GRAVITY_CENTER_VERTICAL:
-            default:
-                offset = mHighlightOffset = h >> 1;
-        }
-
-        offset += (mViewToHighlightGroup + getPaddingTop());
-        return offset;
-    }
-
-    private void updateLinesVariables() {
-        splitLongLineToLineGroup();
-
-        calcOffset();
-
-        mFlingMinOffsetY = mHighlightOffset - computeOffsetYByIndex(mLines.size() - 1, 0);
-        mFlingMaxOffsetY = mHighlightOffset;
-
-        mTouchMinOffsetY = mHighlightOffset - computeOffsetYByIndex(mLines.size() + 3, 0);
-        mTouchMaxOffsetY = mHighlightOffset + computeOffsetYByIndex(3, 0);
-    }
-
-    private void splitLongLineToLineGroup() {
-        mLineGroups.clear();
-        if (mLines.isEmpty()) {
-            return;
-        }
-
-        for (Line line : mLines) {
-            String content = line.getContent();
-            long startMills = line.getStartMills();
-            long endMills = line.getEndMills();
-            float lineWidth = mHighlightTextPaint.measureText(content);
-            if (lineWidth > mDrawRegionWidth) {
-                StaticLayout layout = Util.getStaticLayout(content, mHighlightTextPaint, mDrawRegionWidth, mAlignment);
-                int lineCount = layout.getLineCount();
-                Line[] lines = new Line[lineCount];
-
-                int length = content.length();
-
-                for (int i = 0; i < lineCount; i++) {
-                    int lineStart = layout.getLineStart(i);
-                    int lineEnd = layout.getLineEnd(i);
-                    long startTime = Util.valueOfRatio(startMills, endMills, ((double) lineStart) / length);
-                    long endTime = Util.valueOfRatio(startMills, endMills, ((double) lineEnd) / length);
-                    lines[i] = new Line(startTime, endTime, content.substring(lineStart, lineEnd));
-                }
-                mLineGroups.add(new LineGroup(lines, startMills, endMills));
-            } else {
-                mLineGroups.add(new LineGroup(new Line[]{line}, startMills, endMills));
-            }
-        }
     }
 
     @Nullable
@@ -882,22 +866,85 @@ public class LyricView extends View {
         mFlingAccelerate = savedState.mFlingAccelerate;
     }
 
-//    private void scrollToLine(int index, boolean smooth) {
-//        Line line = mLines.get(index);
-//        mCurrentTimeMills = line.getStartMills();
-//        float offsetY = mHighlightOffset - computeOffsetYByIndex(index, index);
-//        if (mViewToLyric == offsetY) {
-//            return;
-//        }
-//        if (smooth) {
-//            mScrollOffsetYTo = offsetY;
-//            performScroll();
-//        } else {
-//            mViewToLyric = offsetY;
-//            invalidate();
-//        }
-//    }
+    protected int getHighlightOffset(int h) {
+        int offset;
+        switch (mHighlightGravity) {
+            case HIGHLIGHT_GRAVITY_TOP:
+                offset = (int) (mHighlightTextHeight * 0.5);
+                break;
+            case HIGHLIGHT_GRAVITY_BOTTOM:
+                offset = mHighlightOffset = h - (int) (mHighlightTextHeight * 0.5);
+                break;
 
+            case HIGHLIGHT_GRAVITY_CENTER_VERTICAL:
+            default:
+                offset = mHighlightOffset = h >> 1;
+        }
+
+        offset += (mHighlightGroupCenter + getPaddingTop());
+        return offset;
+    }
+
+    private void updateLinesVariables() {
+        splitLongLineToLineGroup();
+
+        mLyricFirstLineToLastLineDistance = calcLyricFirstLineToLastLineDistance();
+        calcOffset();
+
+        mFlingMinOffsetY = mHighlightGroupCenter - mLyricFirstLineToLastLineDistance;
+        mFlingMaxOffsetY = mHighlightGroupCenter;
+
+        mTouchMinOffsetY = mHighlightGroupCenter - mLyricFirstLineToLastLineDistance;
+        ;
+        mTouchMaxOffsetY = mHighlightGroupCenter;
+    }
+
+    /**
+     * 计算歌词首行中线到尾行中线的距离
+     *
+     * @return 距离
+     */
+    private float calcLyricFirstLineToLastLineDistance() {
+        int breakNum = 0;
+        int size = mLineGroups.size();
+        for (int i = 0; i < size; i++) {
+            breakNum += Math.max(0, mLineGroups.get(i).getLines().length - 1);
+        }
+
+        return Math.max(0, size - 1) * mLineDistance + breakNum * mBreakLineDistance;
+    }
+
+    private void splitLongLineToLineGroup() {
+        mLineGroups.clear();
+        if (mLines.isEmpty()) {
+            return;
+        }
+
+        for (Line line : mLines) {
+            String content = line.getContent();
+            long startMills = line.getStartMills();
+            long endMills = line.getEndMills();
+            float lineWidth = mHighlightTextPaint.measureText(content);
+            if (lineWidth > mDrawRegionWidth) {
+                StaticLayout layout = Util.getStaticLayout(content, mHighlightTextPaint, mDrawRegionWidth, mAlignment);
+                int lineCount = layout.getLineCount();
+                Line[] lines = new Line[lineCount];
+
+                int length = content.length();
+
+                for (int i = 0; i < lineCount; i++) {
+                    int lineStart = layout.getLineStart(i);
+                    int lineEnd = layout.getLineEnd(i);
+                    long startTime = Util.valueOfRatio(startMills, endMills, ((double) lineStart) / length);
+                    long endTime = Util.valueOfRatio(startMills, endMills, ((double) lineEnd) / length);
+                    lines[i] = new Line(startTime, endTime, content.substring(lineStart, lineEnd));
+                }
+                mLineGroups.add(new LineGroup(lines, startMills, endMills));
+            } else {
+                mLineGroups.add(new LineGroup(new Line[]{line}, startMills, endMills));
+            }
+        }
+    }
 
     private void drawKaraoke(Canvas canvas, Paint textPaint, int karaokeColor, int color, float textWidth, float x,
                              float baseLine, String content, long startMills, long endMills) {
@@ -973,7 +1020,7 @@ public class LyricView extends View {
 
     private void updateTranslationY(float translationY) {
         mTranslationY = translationY;
-        mTranslatedViewToLyric = mViewToLyric + mTranslationY;
+        mTranslatedLyricTop = mLyricTop + mTranslationY;
     }
 
     private boolean hasScaleAnimation() {
@@ -990,35 +1037,35 @@ public class LyricView extends View {
         return mLines.get(index).getStartMills();
     }
 
-    private float computeOffsetYByTimeMills(long timeMills) {
-        int index = Util.getGroupIndexByTimeMills(mLineGroups, timeMills);
-        return computeOffsetYByIndex(index, index);
-    }
+//    private float computeOffsetYByTimeMills(long timeMills) {
+//        int index = Util.getGroupIndexByTimeMills(mLineGroups, timeMills);
+//        return computeOffsetYByIndex(index, index);
+//    }
 
-    /**
-     * 计算{@link #mLineGroups}中的{@code index}指向的歌词中线到首行中线的偏移量
-     *
-     * @param index          指定的歌词行下标
-     * @param highlightIndex 当前高亮的行的下标
-     * @return 指定行到首行的偏移量
-     */
-    private float computeOffsetYByIndex(int index, int highlightIndex) {
-        float offsetY;
-        if (index == 0) {
-            offsetY = 0;
-        } else if (index < highlightIndex) {
-            int num = getLineNum(index);
-            offsetY = (mTextHeight + mLineDistance) * num;
-        } else if (index == highlightIndex) {
-            int num = getLineNum(Math.max(0, index - 1));
-            offsetY = (mTextHeight + mLineDistance) * num
-                    + (mHighlightTextHeight / 2 + mTextHeight / 2 + mLineDistance);
-        } else {
-            offsetY = (mTextHeight + mLineDistance) * Math.max(0, index - 1)
-                    + (mHighlightTextHeight + mLineDistance);
-        }
-        return offsetY;
-    }
+//    /**
+//     * 计算{@link #mLineGroups}中的{@code index}指向的歌词中线到首行中线的偏移量
+//     *
+//     * @param index          指定的歌词行下标
+//     * @param highlightIndex 当前高亮的行的下标
+//     * @return 指定行到首行的偏移量
+//     */
+//    private float computeOffsetYByIndex(int index, int highlightIndex) {
+//        float offsetY;
+//        if (index == 0) {
+//            offsetY = 0;
+//        } else if (index < highlightIndex) {
+//            int num = getLineNum(index);
+//            offsetY = (mTextHeight + mLineDistance) * num;
+//        } else if (index == highlightIndex) {
+//            int num = getLineNum(Math.max(0, index - 1));
+//            offsetY = (mTextHeight + mLineDistance) * num
+//                    + (mHighlightTextHeight / 2 + mTextHeight / 2 + mLineDistance);
+//        } else {
+//            offsetY = (mTextHeight + mLineDistance) * Math.max(0, index - 1)
+//                    + (mHighlightTextHeight + mLineDistance);
+//        }
+//        return offsetY;
+//    }
 
     /**
      * 指定歌词行到首行之间间隔了多少歌词行
@@ -1034,6 +1081,13 @@ public class LyricView extends View {
         return num;
     }
 
+    private void startFling() {
+        updateState(State.FLINGING);
+        mFlingStartTimeMills = System.currentTimeMillis();
+
+        sendMessage(InternalHandler.FLING, mFlingTimeInterval);
+    }
+
     private void performFling() {
         if (mState != State.FLINGING) {
             return;
@@ -1041,41 +1095,54 @@ public class LyricView extends View {
 
         if (mFlingVelocity == 0) {
             updateState(State.STAY);
-            mFlingTimeMills = 0;
+            mFlingStartTimeMills = 0;
             return;
         }
 
-        if (mFlingTimeMills == 0) {
-            mFlingTimeMills = System.currentTimeMillis();
+        float accelerate = mFlingVelocity > 0 ? -mFlingAccelerate : mFlingAccelerate;
+        long currentTimeMillis = System.currentTimeMillis();
+        long timeMills = currentTimeMillis - mFlingStartTimeMills;
+        float velocity;
+        if (mFlingVelocity > 0) {
+            velocity = Math.max(0, mFlingVelocity + accelerate * timeMills);
         } else {
-            long currentTimeMillis = System.currentTimeMillis();
-            long timeMills = currentTimeMillis - mFlingTimeMills;
-            float accelerate = mFlingVelocity > 0 ? -mFlingAccelerate : mFlingAccelerate;
-            float velocity;
-            if (mFlingVelocity > 0) {
-                velocity = Math.max(0, mFlingVelocity + accelerate * timeMills);
-            } else {
-                velocity = Math.min(0, mFlingVelocity + accelerate * timeMills);
-            }
-
-            // s = vt+0.5*a*t^2
-            float distance = (velocity * velocity - mFlingVelocity * mFlingVelocity) / (2 * accelerate);
-
-            mViewToLyric += distance;
-            mViewToLyric = limit(mViewToLyric, mFlingMinOffsetY, mFlingMaxOffsetY);
-
-            if (mViewToLyric == mFlingMaxOffsetY || mViewToLyric == mFlingMinOffsetY) {
-                mFlingVelocity = 0;
-                mFlingTimeMills = 0;
-            } else {
-                mFlingVelocity = velocity;
-                mFlingTimeMills = currentTimeMillis;
-            }
+            velocity = Math.min(0, mFlingVelocity + accelerate * timeMills);
         }
+
+        // s = (vt^2-v0^2)/2a
+        float distance = (velocity * velocity - mFlingVelocity * mFlingVelocity) / (2 * accelerate);
+
+        Log.i(TAG, "performFling"
+                + "\nmLyricTop: " + mLyricTop
+                + "\nmTranslationY: " + mTranslationY
+                + "\ndistance: " + distance
+                + "\nmFlingMinOffsetY: " + mFlingMinOffsetY
+                + "\nmFlingMaxOffsetY: " + mFlingMaxOffsetY);
+        distance = getFlingDistance(mLyricTop, mTranslationY, distance, mFlingMinOffsetY, mFlingMaxOffsetY);
+        Log.i(TAG, "getFlingDistance: " + distance);
+        updateTranslationY(mTranslationY + distance);
 
         invalidate();
 
-        sendMessage(InternalHandler.FLING, mFlingTimeInterval);
+        if (mTranslatedLyricTop <= mFlingMinOffsetY || mTranslatedLyricTop >= mFlingMaxOffsetY) {
+            mFlingVelocity = 0;
+            mFlingStartTimeMills = 0;
+            updateState(State.STAY);
+        } else {
+            mFlingVelocity = velocity;
+            mFlingStartTimeMills = currentTimeMillis;
+            sendMessage(InternalHandler.FLING, mFlingTimeInterval);
+        }
+    }
+
+    private float getTouchScrollDeltaY(float lyricTop, float translationY, float distance, float minOffsetY, float maxOffsetY) {
+        float target = Util.limit(lyricTop + translationY + distance, minOffsetY, maxOffsetY);
+        return target - lyricTop - translationY;
+    }
+
+    private float getFlingDistance(float lyricTop, float translationY, float distance, float minOffsetY, float maxOffsetY) {
+        float target = Util.limit(lyricTop + translationY + distance, minOffsetY, maxOffsetY);
+        return target - lyricTop - translationY;
     }
 
     private float limit(float value, float min, float max) {
@@ -1086,6 +1153,7 @@ public class LyricView extends View {
     }
 
     private void updateState(State state) {
+        Log.i(TAG, "state: " + mState + "==>" + state);
         mState = state;
         switch (mState) {
             case IDLE:
@@ -1104,7 +1172,7 @@ public class LyricView extends View {
         }
     }
 
-    private void sendMessage(int what, int delayMills) {
+    private void sendMessage(int what, long delayMills) {
         Message message = mHandler.obtainMessage(what);
         message.obj = new WeakReference<>(this);
         mHandler.sendMessageDelayed(message, delayMills);
@@ -1171,11 +1239,14 @@ public class LyricView extends View {
         mLastGroupIndex = INDEX_NONE;
         mCurrentGroupIndex = 0;
         mScrollVelocity = 0;
-        mFlingTimeMills = 0;
+        mFlingStartTimeMills = 0;
+
         mFlingMinOffsetY = 0;
         mFlingMaxOffsetY = 0;
+
         mTouchMinOffsetY = 0;
         mTouchMaxOffsetY = 0;
+
         mTranslationY = 0;
 
         mHandler.removeMessages(InternalHandler.STOP_OVER);
