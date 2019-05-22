@@ -34,8 +34,14 @@ import java.util.List;
  * <p>
  * todo 测试嵌套滑动，是否有滑动冲突
  * todo 绘制区域界定
+ * todo 支持padding，统一坐标系，使用绘制区原点
  * todo 单字karaoke模式支持
  * todo 超出边界时拖动时带有弹性效果，并且支持自定义插值器
+ * todo 动态更改属性
+ * todo 细化歌词行自定义设计
+ * todo saveInstanceState
+ * todo line中绑定相对位置信息，onDraw中直接根据数据渲染，减少计算量，歌词组切换时只需少量数据变更
+ * todo 细化绘制过程，对歌词行进行过滤，剪切边界歌词行
  */
 @SuppressWarnings("unused")
 public class LyricView extends View {
@@ -51,7 +57,7 @@ public class LyricView extends View {
     private static final float HIGHLIGHT_TEXT_SIZE_DEFAULT = 80.0f;
 
     private static final int KARAOKE_TEXT_COLOR_DEFAULT = 0xff0000ff;
-    private static final boolean KARAOKE_ENABLE_DEFAULT = true;
+    private static final boolean KARAOKE_ENABLE_DEFAULT = false;
 
     private static final float LINE_SPACING_DEFAULT = 10.0f;
     private static final float BREAK_LINE_SPACING_DEFAULT = 10.0f;
@@ -92,7 +98,7 @@ public class LyricView extends View {
     private float mFlingAccelerate;
     private long mFlingTimeInterval;
 
-    private float mLineDistance;
+    private float mGroupLineDistance;
     private float mBreakLineDistance;
 
     private long mScrollTimeInterval;
@@ -170,6 +176,11 @@ public class LyricView extends View {
     private List<LineGroup> mLineGroups = new ArrayList<>();
 
     /**
+     * 在绘制区域的歌词行组
+     */
+    private List<LineGroup> mDrawLineGroups = new ArrayList<>();
+
+    /**
      * 通过{@link #mCurrentTimeMills}在{@link #mLineGroups}中查找到匹配的{@link LineGroup}
      * 对象的下标。改行即为当前播放的歌词。
      * 当{@link #mCurrentTimeMills}小于第0行歌词的起始时间时取值为0
@@ -186,10 +197,6 @@ public class LyricView extends View {
      * 高亮行的偏移量，与{@link #mHighlightGravity}共同决定高亮行所在的位置
      */
     private int mHighlightOffset;
-
-//    public static final int HIGHLIGHT_GRAVITY_CENTER_VERTICAL = 0;
-//    public static final int HIGHLIGHT_GRAVITY_TOP = 1;
-//    public static final int HIGHLIGHT_GRAVITY_BOTTOM = 2;
 
     /**
      * 高量行的位置，取值为
@@ -245,7 +252,7 @@ public class LyricView extends View {
     // listeners
 
     private TouchListener mTouchListener;
-    private ColorDesigner mColorDesigner;
+    private LineDesigner mLineDesigner;
     private Layout.Alignment mAlignment;
     private float mLyricTopToHighlightGroupCenter;
     /**
@@ -489,10 +496,10 @@ public class LyricView extends View {
     }
 
     public void setLineDistance(float lineSpacing) {
-        if (mLineDistance == lineSpacing) {
+        if (mGroupLineDistance == lineSpacing) {
             return;
         }
-        mLineDistance = lineSpacing;
+        mGroupLineDistance = lineSpacing;
         invalidate();
     }
 
@@ -547,20 +554,6 @@ public class LyricView extends View {
         mHighlightGroupCenter = getHighlightGroupCenter();
         mLyricTopToHighlightGroupCenter = getLyricTopToHighlightGroupCenter();
         mLyricTop = mHighlightGroupCenter - mLyricTopToHighlightGroupCenter;
-
-//        Log.i(TAG, "setTime"
-//                + "\nmCurrentGroupIndex: " + mCurrentGroupIndex
-//                + "\nmLastGroupIndex: " + mLastGroupIndex
-//                + "\nmHighlightGroupCenter: " + mHighlightGroupCenter
-//                + "\nmLyricTopToHighlightGroupCenter: " + mLyricTopToHighlightGroupCenter
-//                + "\nmLyricTop: " + mLyricTop
-//                + "\nmTranslatedLyricTop: " + mTranslatedLyricTop
-//                + "\nmDrawRegionHeight: " + mDrawRegionHeight
-//                + "\nmDrawRegionTop: " + mDrawRegionTop
-//                + "\nmLineDistance: " + mLineDistance
-//                + "\nmBreakLineDistance: " + mBreakLineDistance
-//                + "\nmTextHeight: " + mTextHeight
-//                + "\nmHighlightTextHeight: " + mHighlightTextHeight);
     }
 
     /**
@@ -576,7 +569,7 @@ public class LyricView extends View {
         int groupSize = getGroupSize(mCurrentGroupIndex);
         float groupHeight = getGroupHeight(mCurrentGroupIndex == 0 ? mHighlightTextHeight : mTextHeight, groupSize);
 
-        return mCurrentGroupIndex * mLineDistance + breakNum * mBreakLineDistance + groupHeight * 0.5f;
+        return mCurrentGroupIndex * mGroupLineDistance + breakNum * mBreakLineDistance + groupHeight * 0.5f;
     }
 
     /**
@@ -630,8 +623,8 @@ public class LyricView extends View {
         mTouchListener = listener;
     }
 
-    public void setColorDesigner(ColorDesigner colorDesigner) {
-        mColorDesigner = colorDesigner;
+    public void setLineDesigner(LineDesigner lineDesigner) {
+        mLineDesigner = lineDesigner;
     }
 
     public void setAutoScrollBack(boolean autoScrollBack) {
@@ -640,28 +633,44 @@ public class LyricView extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
-        int fromIndex = getDrawStartIndex();
-        int toIndex = getDrawEndIndex();
+        if (mLineGroups.isEmpty()) {
+            return;
+        }
         float offset = mTranslatedLyricTop;
-
         int breakLineNum = 0;
         int lineNum = 0;
+        LineGroup currentGroup = mLineGroups.get(mCurrentGroupIndex);
 
-        for (int i = 0; i <= toIndex; i++) {
+        for (int i = 0, size = mLineGroups.size(); i < size; i++) {
             LineGroup group = mLineGroups.get(i);
-            if (i == mCurrentGroupIndex) {
-                Paint paint = hasScaleAnimation() ? mZoomInPaint : mHighlightTextPaint;
-                drawHighlightGroup(canvas, paint, group, offset);
-            } else {
-                Paint paint = (i == mLastGroupIndex && hasScaleAnimation()) ? mZoomOutPaint : mTextPaint;
-                drawGroup(canvas, paint, mTextFontMetrics.ascent, group, offset);
+            float groupTop = offset;
+            float groupHeight = getGroupHeight(i == mCurrentGroupIndex ? mHighlightTextHeight : mTextHeight, group.getLines().length);
+            float groupBottom = groupTop + groupHeight;
+            if (groupTop < mDrawRegionBottom && groupBottom > mDrawRegionTop) {
+                if (i == mCurrentGroupIndex) {
+                    Paint paint = hasScaleAnimation() ? mZoomInPaint : mHighlightTextPaint;
+                    drawHighlightGroup(canvas, paint, group, offset);
+                } else if (i == mLastGroupIndex && hasScaleAnimation()) {
+                    drawGroup(canvas, mZoomOutPaint, mTextFontMetrics.ascent, group, offset);
+                } else {
+                    if (mLineDesigner != null) {
+                        float lineCenterOffsetY = offset + groupHeight * 0.5f - mDrawRegionTop;
+                        float highlightOffset = mHighlightGroupCenter - mDrawRegionTop;
+                        float mHighlightHeight = getGroupHeight(mHighlightTextHeight, currentGroup.getLines().length);
+                        mLineDesigner.designLine(mTextPaint, lineCenterOffsetY, highlightOffset, mDrawRegionHeight);
+                    }
+                    drawGroup(canvas, mTextPaint, mTextFontMetrics.ascent, group, offset);
+                }
+            }
+            if (groupTop >= mDrawRegionBottom) {
+                break;
             }
 
             breakLineNum += Math.max(0, group.getLines().length - 1);
             lineNum++;
 
             // 避免float累加误差
-            offset = mTranslatedLyricTop + breakLineNum * mBreakLineDistance + lineNum * mLineDistance;
+            offset = mTranslatedLyricTop + breakLineNum * mBreakLineDistance + lineNum * mGroupLineDistance;
         }
     }
 
@@ -676,37 +685,53 @@ public class LyricView extends View {
         String content;
         float ascent;
         float x;
+        float y;
 
-        // 绘制已经播放过的行
-        for (int i = 0; i < index; i++) {
-            line = lines[i];
+        if (mKaraokeEnable) {
+            // 绘制已经播放过的行
+            for (int i = 0; i < index; i++) {
+                line = lines[i];
+                content = line.getContent();
+                ascent = mHighlightFontMetrics.ascent;
+                x = mDrawRegionLeft + (mDrawRegionWidth - paint.measureText(content)) * 0.5f;
+                paint.setColor(mKaraokeTextColor);
+                y = offset - ascent;
+                canvas.drawText(content, x, y, paint);
+                paint.setColor(mHighlightTextColor);
+                offset += mBreakLineDistance;
+            }
+
+            // 绘制正在播放的行
+            line = lines[index];
             content = line.getContent();
             ascent = mHighlightFontMetrics.ascent;
-            x = mDrawRegionLeft + (mDrawRegionWidth - paint.measureText(content)) * 0.5f;
-            paint.setColor(mKaraokeTextColor);
-            canvas.drawText(content, x, offset - ascent, paint);
+            float textWidth = paint.measureText(content);
+            x = mDrawRegionLeft + (mDrawRegionWidth - textWidth) * 0.5f;
+            y = offset - ascent;
+            drawKaraoke(canvas, paint, mKaraokeTextColor, mHighlightTextColor, textWidth, x, y, line.getContent(), line.getStartMills(), line.getEndMills());
             paint.setColor(mHighlightTextColor);
             offset += mBreakLineDistance;
-        }
 
-        // 绘制正在播放的行
-        line = lines[index];
-        content = line.getContent();
-        ascent = mHighlightFontMetrics.ascent;
-        float textWidth = paint.measureText(content);
-        x = mDrawRegionLeft + (mDrawRegionWidth - textWidth) * 0.5f;
-        drawKaraoke(canvas, paint, mKaraokeTextColor, mHighlightTextColor, textWidth, x, offset - ascent, line.getContent(), line.getStartMills(), line.getEndMills());
-        paint.setColor(mHighlightTextColor);
-        offset += mBreakLineDistance;
-
-        // 绘制未播放的行
-        for (int i = index + 1, size = lines.length; i < size; i++) {
-            line = lines[i];
-            content = line.getContent();
-            ascent = mHighlightFontMetrics.ascent;
-            x = mDrawRegionLeft + (mDrawRegionWidth - paint.measureText(content)) * 0.5f;
-            canvas.drawText(content, x, offset - ascent, paint);
-            offset += mBreakLineDistance;
+            // 绘制未播放的行
+            for (int i = index + 1, size = lines.length; i < size; i++) {
+                line = lines[i];
+                content = line.getContent();
+                ascent = mHighlightFontMetrics.ascent;
+                x = mDrawRegionLeft + (mDrawRegionWidth - paint.measureText(content)) * 0.5f;
+                y = offset - ascent;
+                canvas.drawText(content, x, y, paint);
+                offset += mBreakLineDistance;
+            }
+        } else {
+            for (int i = 0, size = lines.length; i < size; i++) {
+                line = lines[i];
+                content = line.getContent();
+                ascent = mHighlightFontMetrics.ascent;
+                x = mDrawRegionLeft + (mDrawRegionWidth - paint.measureText(content)) * 0.5f;
+                y = offset - ascent;
+                canvas.drawText(content, x, y, paint);
+                offset += mBreakLineDistance;
+            }
         }
     }
 
@@ -714,17 +739,51 @@ public class LyricView extends View {
         for (Line line : group.getLines()) {
             String content = line.getContent();
             float x = mDrawRegionLeft + (mDrawRegionWidth - paint.measureText(content)) * 0.5f;
-            canvas.drawText(content, x, offset - ascent, paint);
+            float y = offset - ascent;
+            canvas.drawText(content, x, y, paint);
             offset += mBreakLineDistance;
         }
     }
 
-    private int getDrawStartIndex() {
-        return 0;
-    }
+    private void drawKaraoke(Canvas canvas, Paint textPaint, int karaokeColor, int color, float textWidth, float x,
+                             float baseLine, String content, long startMills, long endMills) {
+        float playedWidth;
 
-    private int getDrawEndIndex() {
-        return mLineGroups.size() - 1;
+        if (endMills == startMills) {
+            playedWidth = mCurrentTimeMills < startMills ? 0 : (int) textWidth;
+        } else {
+            playedWidth = textWidth * (mCurrentTimeMills - startMills) / (endMills - startMills);
+        }
+
+        if (playedWidth > textWidth) {
+            playedWidth = textWidth;
+        }
+
+        if (playedWidth < 0) {
+            playedWidth = 0;
+        }
+
+        // 绘制已经播放的部分
+        mPlayedRegion.left = x;
+        mPlayedRegion.top = baseLine + mHighlightFontMetrics.ascent;
+        mPlayedRegion.right = x + playedWidth;
+        mPlayedRegion.bottom = baseLine + mHighlightFontMetrics.descent;
+        canvas.save();
+        canvas.clipRect(mPlayedRegion);
+        textPaint.setColor(karaokeColor);
+        canvas.drawText(content, x, baseLine, textPaint);
+        canvas.restore();
+
+        //绘制未播放的部分
+        mUnPlayedRegion.left = x + playedWidth;
+        mUnPlayedRegion.top = baseLine + mHighlightFontMetrics.ascent;
+        mUnPlayedRegion.right = x + textWidth;
+        mUnPlayedRegion.bottom = baseLine + mHighlightFontMetrics.descent;
+        canvas.save();
+        canvas.clipRect(mUnPlayedRegion);
+        textPaint.setColor(color);
+        canvas.drawText(content, x, baseLine, textPaint);
+        canvas.restore();
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -750,15 +809,7 @@ public class LyricView extends View {
                 float y = event.getY();
                 float distance = y - mTouchStartY;
                 mTouchStartY = y;
-//                Log.i(TAG, "onTouchEvent"
-//                        + "\nmLyricTop: " + mLyricTop
-//                        + "\nmTranslationY: " + mTranslationY
-//                        + "\ndistance: " + distance
-//                        + "\nmTouchMinOffsetY: " + mTouchMinOffsetY
-//                        + "\nmTouchMaxOffsetY: " + mTouchMaxOffsetY);
                 distance = getTouchScrollDeltaY(mLyricTop, mTranslationY, distance, mTouchMinOffsetY, mTouchMaxOffsetY);
-//                Log.i(TAG, "getTouchScrollDeltaY: " + distance);
-
                 updateTranslationY(mTranslationY + distance);
                 invalidate();
                 if (mTouchListener != null) {
@@ -819,7 +870,7 @@ public class LyricView extends View {
         SavedState savedState = new SavedState(super.onSaveInstanceState());
         savedState.mLines = mLines;
         savedState.mCurrentTimeMills = mCurrentTimeMills;
-        savedState.mLineSpacing = mLineDistance;
+        savedState.mLineSpacing = mGroupLineDistance;
         savedState.mKaraokeEnable = mKaraokeEnable;
         savedState.mKaraokeTextColor = mKaraokeTextColor;
         savedState.mHighlightTextColor = mHighlightTextColor;
@@ -844,7 +895,7 @@ public class LyricView extends View {
 
         mLines = savedState.mLines;
         mCurrentTimeMills = savedState.mCurrentTimeMills;
-        mLineDistance = savedState.mLineSpacing;
+        mGroupLineDistance = savedState.mLineSpacing;
         mKaraokeEnable = savedState.mKaraokeEnable;
         mKaraokeTextColor = savedState.mKaraokeTextColor;
         mHighlightTextColor = savedState.mHighlightTextColor;
@@ -852,25 +903,6 @@ public class LyricView extends View {
         mTextSize = savedState.mTextSize;
         mHighlightTextSize = savedState.mHighlightTextSize;
         mFlingAccelerate = savedState.mFlingAccelerate;
-    }
-
-    protected int getHighlightOffset(int h) {
-        int offset;
-        switch (mHighlightGravity) {
-            case HIGHLIGHT_GRAVITY_TOP:
-                offset = (int) (mHighlightTextHeight * 0.5);
-                break;
-            case HIGHLIGHT_GRAVITY_BOTTOM:
-                offset = mHighlightOffset = h - (int) (mHighlightTextHeight * 0.5);
-                break;
-
-            case HIGHLIGHT_GRAVITY_CENTER_VERTICAL:
-            default:
-                offset = mHighlightOffset = h >> 1;
-        }
-
-        offset += (mHighlightGroupCenter + getPaddingTop());
-        return offset;
     }
 
     private void updateLinesVariables() {
@@ -898,7 +930,7 @@ public class LyricView extends View {
             breakNum += Math.max(0, mLineGroups.get(i).getLines().length - 1);
         }
 
-        return Math.max(0, size - 1) * mLineDistance + breakNum * mBreakLineDistance;
+        return Math.max(0, size - 1) * mGroupLineDistance + breakNum * mBreakLineDistance;
     }
 
     private void splitLongLineToLineGroup() {
@@ -931,47 +963,6 @@ public class LyricView extends View {
                 mLineGroups.add(new LineGroup(new Line[]{line}, startMills, endMills));
             }
         }
-    }
-
-    private void drawKaraoke(Canvas canvas, Paint textPaint, int karaokeColor, int color, float textWidth, float x,
-                             float baseLine, String content, long startMills, long endMills) {
-        float playedWidth;
-
-        if (endMills == startMills) {
-            playedWidth = mCurrentTimeMills < startMills ? 0 : (int) textWidth;
-        } else {
-            playedWidth = textWidth * (mCurrentTimeMills - startMills) / (endMills - startMills);
-        }
-
-        if (playedWidth > textWidth) {
-            playedWidth = textWidth;
-        }
-
-        if (playedWidth < 0) {
-            playedWidth = 0;
-        }
-
-        // 绘制已经播放的部分
-        mPlayedRegion.left = x;
-        mPlayedRegion.top = baseLine + mHighlightFontMetrics.ascent;
-        mPlayedRegion.right = x + playedWidth;
-        mPlayedRegion.bottom = baseLine + mHighlightFontMetrics.descent;
-        canvas.save();
-        canvas.clipRect(mPlayedRegion);
-        textPaint.setColor(karaokeColor);
-        canvas.drawText(content, x, baseLine, textPaint);
-        canvas.restore();
-
-        //绘制未播放的部分
-        mUnPlayedRegion.left = x + playedWidth;
-        mUnPlayedRegion.top = baseLine + mHighlightFontMetrics.ascent;
-        mUnPlayedRegion.right = x + textWidth;
-        mUnPlayedRegion.bottom = baseLine + mHighlightFontMetrics.descent;
-        canvas.save();
-        canvas.clipRect(mUnPlayedRegion);
-        textPaint.setColor(color);
-        canvas.drawText(content, x, baseLine, textPaint);
-        canvas.restore();
     }
 
     private void startScroll() {
@@ -1034,7 +1025,7 @@ public class LyricView extends View {
     }
 
     private long getTimeMillsByOffsetY(float offsetY) {
-        int index = (int) ((mHighlightOffset - offsetY) / (mTextHeight + mLineDistance) + 0.5f);
+        int index = (int) ((mHighlightOffset - offsetY) / (mTextHeight + mGroupLineDistance) + 0.5f);
         if (index < 0) {
             index = 0;
         } else if (index >= mLines.size()) {
@@ -1042,36 +1033,6 @@ public class LyricView extends View {
         }
         return mLines.get(index).getStartMills();
     }
-
-//    private float computeOffsetYByTimeMills(long timeMills) {
-//        int index = Util.getGroupIndexByTimeMills(mLineGroups, timeMills);
-//        return computeOffsetYByIndex(index, index);
-//    }
-
-//    /**
-//     * 计算{@link #mLineGroups}中的{@code index}指向的歌词中线到首行中线的偏移量
-//     *
-//     * @param index          指定的歌词行下标
-//     * @param highlightIndex 当前高亮的行的下标
-//     * @return 指定行到首行的偏移量
-//     */
-//    private float computeOffsetYByIndex(int index, int highlightIndex) {
-//        float offsetY;
-//        if (index == 0) {
-//            offsetY = 0;
-//        } else if (index < highlightIndex) {
-//            int num = getLineNum(index);
-//            offsetY = (mTextHeight + mLineDistance) * num;
-//        } else if (index == highlightIndex) {
-//            int num = getLineNum(Math.max(0, index - 1));
-//            offsetY = (mTextHeight + mLineDistance) * num
-//                    + (mHighlightTextHeight / 2 + mTextHeight / 2 + mLineDistance);
-//        } else {
-//            offsetY = (mTextHeight + mLineDistance) * Math.max(0, index - 1)
-//                    + (mHighlightTextHeight + mLineDistance);
-//        }
-//        return offsetY;
-//    }
 
     /**
      * 指定歌词行到首行之间间隔了多少歌词行
@@ -1162,18 +1123,11 @@ public class LyricView extends View {
         Log.i(TAG, "state: " + mState + "==>" + state);
         mState = state;
         switch (mState) {
-            case IDLE:
-//                if (mCurrentMills != 0) {
-//                    setTime(mCurrentMills);
-//                    mCurrentMills = 0;
-//                }
-                break;
-
             case STAY:
                 mHandler.removeMessages(InternalHandler.STOP_OVER);
                 sendMessage(InternalHandler.STOP_OVER, mStopTime);
                 break;
-
+            case IDLE:
             default:
         }
     }
@@ -1269,7 +1223,7 @@ public class LyricView extends View {
     }
 
     public float getLineSpacing() {
-        return mLineDistance;
+        return mGroupLineDistance;
     }
 
     private static class SavedState extends BaseSavedState {

@@ -14,6 +14,7 @@ import android.widget.TextView;
 
 import com.leixing.demo.util.TaskExecutor;
 import com.leixing.demo.util.TimeUtil;
+import com.leixing.demo.util.ViewUtil;
 import com.leixing.lyricview.Line;
 import com.leixing.lyricview.Lyric;
 import com.leixing.lyricview.LyricParser;
@@ -48,6 +49,7 @@ public class LyricActivity extends Activity {
     private List<Lyric> mLyrics;
     private int mPosition;
     private Player mPlayer;
+    private Context mContext;
 
     public static void start(Context context) {
         Intent intent = new Intent(context, LyricActivity.class);
@@ -66,6 +68,7 @@ public class LyricActivity extends Activity {
     }
 
     private void initVariables() {
+        mContext = getApplicationContext();
         mLyrics = new ArrayList<>();
         mPosition = 0;
 
@@ -129,15 +132,14 @@ public class LyricActivity extends Activity {
             @Override
             public void onTouchUp(long timeMills) {
                 Log.i(TAG, "onTouchUp timeMills:" + timeMills);
-
             }
         });
 
-        lvLyric.setColorDesigner(new LyricColorDesigner(
-                lvLyric.getHighlightTextHeight(),
-                lvLyric.getTextHeight(),
-                lvLyric.getLineSpacing(),
-                0xffff00ff, 0xffff0000, 0xff00ff00));
+        lvLyric.setLineDesigner(new LyricLineDesigner(
+                0xffffffff,
+                0x33ffffff,
+                ViewUtil.sp2px(mContext, 16.0f),
+                ViewUtil.sp2px(mContext, 12.0f)));
 
         sbSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override

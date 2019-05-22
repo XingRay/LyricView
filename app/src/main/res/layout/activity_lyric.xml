@@ -4,6 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#333"
     tools:ignore="ContentDescription,RtlHardcoded">
 
     <com.leixing.lyricview.LyricView
@@ -14,6 +15,9 @@
         app:layout_constraintTop_toTopOf="parent"
         app:lyric_view_break_line_distance="30dp"
         app:lyric_view_fling_accelerate="0.02"
+        app:lyric_view_text_color="#fff"
+        app:lyric_view_highlight_text_color="#00f"
+        app:lyric_view_karaoke_color="#f00"
         app:lyric_view_highlight_text_size="20sp"
         app:lyric_view_line_distance="40dp"
         app:lyric_view_scroll_time_max="300"
