@@ -251,12 +251,13 @@ public class LyricView extends View {
     /**
      * 一次滑动的总距离
      */
-    private float mScrollTranslationY;
+    private float mScrollingTranslationY;
 
     /**
      * 歌词首行中线到尾行中线的距离
      */
     private float mLyricFirstLineToLastLineDistance;
+    private float mScrollFrom;
 
 
     public LyricView(Context context) {
@@ -529,30 +530,17 @@ public class LyricView extends View {
                 startScroll();
                 break;
 
-            case SCROLLING_WITH_SCALE:
-                return;
-
             case STAY:
             case TOUCHING:
             case FLINGING:
             case SCROLLING:
+            case SCROLLING_WITH_SCALE:
                 invalidate();
                 break;
 
             default:
                 break;
         }
-    }
-
-    private void startScroll() {
-        float distance = -mTranslationY;
-        Line line = mLines.get(mCurrentGroupIndex);
-        long lineMills = line.getEndMills() - mCurrentTimeMills;
-        long scrollTime = Util.limit(lineMills, mMinScrollTimeMills, mMaxScrollTimeMills);
-        mScrollVelocity = distance / scrollTime + 1;
-        mScrollTranslationY = mTranslationY;
-
-        performScroll();
     }
 
     private void calcOffset() {
@@ -891,11 +879,10 @@ public class LyricView extends View {
         mLyricFirstLineToLastLineDistance = calcLyricFirstLineToLastLineDistance();
         calcOffset();
 
-        mFlingMinOffsetY = mHighlightGroupCenter - mLyricFirstLineToLastLineDistance;
+        mFlingMinOffsetY = mHighlightGroupCenter - mLyricFirstLineToLastLineDistance - mHighlightTextHeight;
         mFlingMaxOffsetY = mHighlightGroupCenter;
 
-        mTouchMinOffsetY = mHighlightGroupCenter - mLyricFirstLineToLastLineDistance;
-        ;
+        mTouchMinOffsetY = mHighlightGroupCenter - mLyricFirstLineToLastLineDistance - mHighlightTextHeight;
         mTouchMaxOffsetY = mHighlightGroupCenter;
     }
 
@@ -987,16 +974,35 @@ public class LyricView extends View {
         canvas.restore();
     }
 
+    private void startScroll() {
+        Line line = mLines.get(mCurrentGroupIndex);
+        long lineMills = line.getEndMills() - mCurrentTimeMills;
+        if (lineMills < mMinScrollTimeMills) {
+            updateTranslationY(0);
+            updateState(State.IDLE);
+            invalidate();
+            return;
+        }
+
+        mScrollFrom = mTranslationY;
+        mScrollingTranslationY = mTranslationY;
+        long scrollTime = Util.limit(lineMills, mMinScrollTimeMills, mMaxScrollTimeMills);
+        mScrollVelocity = mScrollFrom / scrollTime;
+
+        performScroll();
+    }
+
     private void performScroll() {
         if (mState != State.SCROLLING_WITH_SCALE && mState != State.SCROLLING) {
             return;
         }
 
         float distance = mScrollVelocity * mScrollTimeInterval;
-        updateTranslationY(Util.approach(mTranslationY, 0, Math.abs(distance)));
+        mScrollingTranslationY = Util.approach(mScrollingTranslationY, 0, Math.abs(distance));
+        updateTranslationY(mScrollingTranslationY);
 
         if (hasScaleAnimation()) {
-            float ratio = 1 - (mTranslationY / mScrollTranslationY);
+            float ratio = 1 - (mScrollingTranslationY / mScrollFrom);
 
             float zoomOutTextSize = Util.calcInterValue(mHighlightTextSize, mTextSize, ratio);
             int zoomOutTextColor = Util.evaluateInt(mKaraokeEnable ? mKaraokeTextColor : mHighlightTextColor, mTextColor, ratio);
@@ -1010,7 +1016,7 @@ public class LyricView extends View {
         }
 
         invalidate();
-        if (mTranslationY == 0) {
+        if (mScrollingTranslationY == 0) {
             updateState(State.IDLE);
             return;
         }

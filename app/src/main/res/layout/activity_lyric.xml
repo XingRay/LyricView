@@ -16,7 +16,7 @@
         app:lyric_view_fling_accelerate="0.02"
         app:lyric_view_highlight_text_size="20sp"
         app:lyric_view_line_distance="40dp"
-        app:lyric_view_scroll_time_max="800"
+        app:lyric_view_scroll_time_max="300"
         app:lyric_view_text_size="16sp" />
 
     <View

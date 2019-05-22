@@ -260,35 +260,25 @@ public class LyricParser {
             return lines;
         }
 
+        boolean isAllContentEmpty = true;
         for (int i = 0, size = lyricLines.size() - 1; i < size; i++) {
             Lyric.Line currentLine = lyricLines.get(i);
             Lyric.Line nextLine = lyricLines.get(i + 1);
+            String content = currentLine.getContent();
+            isAllContentEmpty = isAllContentEmpty && TextUtils.isEmpty(content);
             lines.add(new Line(currentLine.getStartTime(),
-                    nextLine.getStartTime() - 1, currentLine.getContent()));
-        }
-        Lyric.Line lastLine = lyricLines.get(lyricLines.size() - 1);
-        String content = lastLine.getContent();
-        if (!TextUtils.isEmpty(content)) {
-            lines.add(new Line(lastLine.getStartTime(), lastLine.getStartTime(), content));
+                    nextLine.getStartTime() - 1, content));
         }
 
-        if (isAllContentEmpty(lines)) {
+        Lyric.Line lastLine = lyricLines.get(lyricLines.size() - 1);
+        String content = lastLine.getContent();
+        lines.add(new Line(lastLine.getStartTime(), lastLine.getStartTime(), content));
+        isAllContentEmpty = isAllContentEmpty && TextUtils.isEmpty(content);
+
+        if (isAllContentEmpty) {
             lines.clear();
         }
         return lines;
-    }
-
-    private static boolean isAllContentEmpty(List<Line> lines) {
-        if (lines == null || lines.isEmpty()) {
-            return true;
-        }
-        for (Line line : lines) {
-            if (!TextUtils.isEmpty(line.getContent())) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     private static long toLong(String s) {

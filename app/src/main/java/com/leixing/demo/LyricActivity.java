@@ -15,10 +15,10 @@ import android.widget.TextView;
 import com.leixing.demo.util.TaskExecutor;
 import com.leixing.demo.util.TimeUtil;
 import com.leixing.lyricview.Line;
-import com.leixing.lyricview.LyricView;
-import com.leixing.lyricview.TouchListener;
 import com.leixing.lyricview.Lyric;
 import com.leixing.lyricview.LyricParser;
+import com.leixing.lyricview.LyricView;
+import com.leixing.lyricview.TouchListener;
 
 import java.io.File;
 import java.io.IOException;
@@ -73,6 +73,7 @@ public class LyricActivity extends Activity {
         mPlayer.setPlayerListener(new Player.PlayerListener() {
             @Override
             public void onProgress(long progress, long duration) {
+                Log.i(TAG, "progress: " + progress);
                 lvLyric.setTime(progress);
                 sbSeekBar.setProgress((int) progress);
                 showProgress(progress);
