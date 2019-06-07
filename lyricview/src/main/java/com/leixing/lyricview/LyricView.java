@@ -31,17 +31,6 @@ import java.util.List;
  * @author : leixing
  * email : leixing1012@qq.com
  * @date : 2018/11/10 20:04
- * <p>
- * todo 测试嵌套滑动，是否有滑动冲突
- * todo 绘制区域界定
- * todo 支持padding，统一坐标系，使用绘制区原点
- * todo 单字karaoke模式支持
- * todo 超出边界时拖动时带有弹性效果，并且支持自定义插值器
- * todo 动态更改属性
- * todo 细化歌词行自定义设计
- * todo saveInstanceState
- * todo line中绑定相对位置信息，onDraw中直接根据数据渲染，减少计算量，歌词组切换时只需少量数据变更
- * todo 细化绘制过程，对歌词行进行过滤，剪切边界歌词行
  */
 @SuppressWarnings("unused")
 public class LyricView extends View {
